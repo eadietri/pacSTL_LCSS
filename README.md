@@ -96,7 +96,7 @@ The ego vessel is initialized at $p_x =  7.0, p_y = -1,0, \psi = 2.89, v_x = -0.
 source venv/bin/activate
 </pre>
 
-<pre>pip install -e  
+<pre>pip install -e .
 </pre>
 
 # Run Instructions
