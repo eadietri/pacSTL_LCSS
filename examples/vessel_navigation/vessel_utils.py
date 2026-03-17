@@ -5,7 +5,7 @@ import skadipy.actuator
 import skadipy.allocator
 from numpy.random import default_rng
 
-from reachability_utils.trigonometry_utils import rotation_matrix, normalize_degree, degree_to_radian, normalize_radian, normalize_radian_pi
+from reachability_utils.trigonometry_utils import rotation_matrix, normalize_degree
 from pacSTL.atomic_robustness_bounds import Predicate, Robustness
 from pacSTL.pacSTL_utils import EllipsoidalSignalTemporalLogic, SignalTemporalLogic
 from reachability_utils.data_utils import body_to_world
@@ -25,6 +25,15 @@ class DrillshipSimulator(BaseSimulator):
         rng = default_rng()
         ru = rng.uniform
 
+        # 1. Generate the random array and reshape it to (6, 1)
+        random_nu = np.array([
+            ru(0.3, 0.5), ru(-0.1, 0.1), ru(-0.092, 0.0111),
+            ru(-0.092, 0), ru(-0.079, 0), ru(-0.1, 0.1)
+        ]).reshape(6, 1)
+
+        # 2. Update the simulator's attribute
+        self.nu0 = random_nu
+
         # parameters for Drillship
         return shoeboxpy.model6dof.Shoebox(
             L=2.578,
@@ -34,7 +43,7 @@ class DrillshipSimulator(BaseSimulator):
             GM_phi=0.02,
             eta0=np.zeros(6),
             # initialize nu
-            nu0 = np.array([ru(0.3, 0.5), ru(-0.1, 0.1), ru(-0.092, 0.0111), ru(-0.092, 0), ru(-0.079, 0), ru(-0.1, 0.1)])
+            nu0 = self.nu0.flatten()
         )
 
     def _init_thrusters(self):
@@ -113,6 +122,36 @@ def compute_vessel_corners(x, y, yaw, length=1.0, width=0.3):
 
     return corners_world
 
+
+def step_vessel(simulator, tau_cmd):
+    simtime = 0.51
+    T = np.arange(0, simtime, simulator.dt) # simulator.dt = 0.01
+
+    eta = np.zeros((6, len(T)))
+    nu = np.zeros((6, len(T)))
+
+    for i, t in enumerate(T):
+        u = np.zeros((simulator.allocator._b_matrix.shape[1], 1))
+        b = np.zeros((6, 1))
+        if i % 50 == 0:
+            # allocate thrust
+            u, _ = simulator.allocator.allocate(tau_cmd)
+
+            simulator.command_u(u)
+        # actually advance the simulation
+        simulator.iterate(tau_ext=b)
+
+        # results from each step
+        eta[:, i] = simulator.vessel.eta
+        nu[:, i] = simulator.vessel.nu
+
+    extra_values = np.array([body_to_world(body_vel_x, body_vel_y, yaw) for body_vel_x, body_vel_y, yaw in
+                             zip(nu[0, :], nu[1, :], eta[5, :])])
+
+    last_state = np.array([eta[0, -1], eta[1, -1], eta[5, -1], extra_values[-1, 0], extra_values[-1, 1]])
+
+    return last_state
+
 def sample_vessel():
     simulator = DrillshipSimulator()
 
@@ -175,23 +214,26 @@ def make_vessel_samples(ndata):
 
 S_DOT_MAX = 0.4 #v_max
 S_DDOT_MAX = 0.15 #a_max
-D_DOT_MAX = 0.8 #yaw_dot_max
-S_DOT_MAX_DRILL = 0.4 #v_max #TODO decide if we want to keep the values the same for drillship vessel??
-S_DDOT_MAX_DRILL = 0.15 #a_max #TODO decide if we want to keep the values the same for drillship vessel??
-D_DOT_MAX_DRILL = 0.8 #yaw_dot_max #TODO decide if we want to keep the values the same for drillship vessel??
+D_DOT_MAX = 0.1 #yaw_dot_max
+S_DOT_MAX_DRILL = 0.4 #v_max 
+S_DDOT_MAX_DRILL = 0.15 #a_max 
+D_DOT_MAX_DRILL = 0.8 #yaw_dot_max 
 T_H = 20.0 #in s
 R_EGO = 1.0 #in m
 R_EGO_DRILL = 2.6 #in m
 
 DT_SIM = 0.5
 
-def step_mock_sim(waypoints, ros_dict):
+def step_mock_sim(waypoints, ros_dict, simulator, tau_cmd):
 
     # mock step ego
     current_wp = waypoints[0]
 
     #normal heading vec toward wp
-    heading_vec = (current_wp - np.array([ros_dict['ego']["p_x"], ros_dict['ego']["p_y"]]))/ np.linalg.norm(current_wp - np.array([ros_dict['ego']["p_x"], ros_dict['ego']["p_y"]]))
+    desired_heading_vec = (current_wp - np.array([ros_dict['ego']["p_x"], ros_dict['ego']["p_y"]]))/ np.linalg.norm(current_wp - np.array([ros_dict['ego']["p_x"], ros_dict['ego']["p_y"]]))
+    desired_heading_ang = np.arctan2(desired_heading_vec[1], desired_heading_vec[0])
+    heading_ang = np.clip(desired_heading_ang, ros_dict['ego']["psi"]- D_DOT_MAX*DT_SIM, ros_dict['ego']["psi"]+ D_DOT_MAX*DT_SIM)
+    heading_vec = np.array([np.cos(heading_ang), np.sin(desired_heading_ang)])
     distance_movement_ego = DT_SIM * heading_vec* np.linalg.norm(
         np.array([ros_dict['ego']["v_x"], ros_dict['ego']["v_y"]]))
 
@@ -211,10 +253,14 @@ def step_mock_sim(waypoints, ros_dict):
 
 
     # mock step other
-    distance_movement_other = DT_SIM * np.array([np.cos(ros_dict['other']["psi"]), np.sin(ros_dict['other']["psi"])]) * np.linalg.norm(np.array([ros_dict['other']["v_x"], ros_dict['other']["v_y"] ]))
-
-    ros_dict['other']['p_x'] += distance_movement_other[0]
-    ros_dict['other']['p_y'] += distance_movement_other[1]
+    new_state_other = step_vessel(simulator, tau_cmd)
+    # rotate z down to z up
+    new_state_other *= np.array([1.0, -1.0, -1.0, 1.0, -1.0])
+    ros_dict['other']['p_x'] = ros_dict['initial_other']['p_x'] + new_state_other[0]
+    ros_dict['other']['p_y'] = ros_dict['initial_other']['p_y'] + new_state_other[1]
+    ros_dict['other']['psi'] = ros_dict['initial_other']['psi'] + new_state_other[2]
+    ros_dict['other']['v_x'] = new_state_other[3]
+    ros_dict['other']['v_y'] = new_state_other[4]
 
 
     return done, waypoints, ros_dict
@@ -242,22 +288,7 @@ class AtomicPredicate(Predicate):
         m: minus sign
         """
 
-        # invalid_ids = {"i", "o", "p", "m"}
-        # assert ego_id not in invalid_ids and other_id not in invalid_ids
-        #
-        # id = id.replace(".", "p")
-        # id = id.replace("-", "m")
-        #
-        # ego_id, other_id = (ego_id, other_id) if relative_to_ego else (other_id, ego_id)
-        # id = f"{'i' if semantic_type == 'input' else 'o' if semantic_type == 'output' else ''}{ego_id}{other_id}{id}"
-        # # LOGGER.debug(f"AtomicPredicate: {id}, semantic_type: {semantic_type}")
-
         self.factor = factor
-
-        # self.id = id
-        #
-        # self.ego_id = ego_id
-        # self.other_id = other_id
 
         self.semantic_type = semantic_type
         self.relative_to_ego = relative_to_ego
@@ -310,7 +341,7 @@ class InPositionHalfspace(AtomicPredicate):
         A = self.reverse_side_factor * ((self.rotation_matrix @ cos_sin_ego.T) / self.factor)
         b = self.reverse_side_factor *  ((self.rotation_matrix @ cos_sin_ego.T)  / self.factor) @ (state_ego[:2])
 
-        A_full = np.zeros(6)
+        A_full = np.zeros(5)
         A_full[:2] = A
 
         return (A_full, b)
@@ -364,11 +395,11 @@ class CollisionRobustness(Robustness):
         super().__init__()
         self.t_h = t_h
         self.r_ego = r_ego
-        self.Q = np.array([0, 0, 0, 1, 1, 0])
+        self.Q = np.array([0, 0, 0, 1, 1])
 
     def compute_robustness(self, state_ego_array, ellipsoid_A, ellipsoid_b, center, time_step):
         threshold = (np.linalg.norm(state_ego_array[0:2] - center[0:2]) + self.r_ego)**2 / self.t_h**2
-        v_ego = np.zeros(6)
+        v_ego = np.zeros(5)
         v_ego[3:5] = state_ego_array[3:5]
         temp_1 =  self.min_quadratic_predicates(self.Q, threshold, None, ellipsoid_A, ellipsoid_b,center, v_ego)
         temp_2 =  self.max_quadratic_predicates_langrage(ellipsoid_A, center, [3,4], 1.0, threshold)

@@ -1,5 +1,4 @@
 import math
-import numpy as np
 from scipy.optimize import minimize, NonlinearConstraint
 from ellipsoids import in_ellipsoid
 from scipy.stats import binom, beta

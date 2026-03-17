@@ -5,6 +5,7 @@ from reachability_utils.binomial import binomial_tail
 import pickle
 import numpy as np
 import os
+import time
 
 
 PRED_HORIZON = 19
@@ -80,10 +81,9 @@ def eval_with_sets(sets_Ab_dict):
     atomic_interval_dict['HeightLater_prime'] = {}
     atomic_interval_dict['HeightAlways'] = {}
     atomic_interval_dict['VelocityBounds'] = {}
-    atomic_interval_dict['VelocityBounds_debug1'] = {}
-    atomic_interval_dict['VelocityBounds_debug2'] = {}
 
     i = 1
+    start = time.perf_counter()
     while i <= PRED_HORIZON:
         atomic_interval_dict['HeightLater'][i] = HL.compute_robustness(sets_Ab_dict[i][0],
                                                                                 sets_Ab_dict[i][1],
@@ -100,29 +100,24 @@ def eval_with_sets(sets_Ab_dict):
                                                                                 sets_Ab_dict[i][1],
                                                                                 sets_Ab_dict[i][2], i)})
 
-        atomic_interval_dict['VelocityBounds_debug1'][i] = VB.compute_robustness(sets_Ab_dict[i][0],
-                                      sets_Ab_dict[i][1],
-                                      sets_Ab_dict[i][2], i)
-        atomic_interval_dict['VelocityBounds_debug2'][i] =  AVB.compute_robustness(sets_Ab_dict[i][0],
-                                                                                        sets_Ab_dict[i][1],
-                                                                                        sets_Ab_dict[i][2], i)
-
         i += 1
-        #print(i)
 
     # specification evaluation
     full_time_horizon = list(range(1, PRED_HORIZON+1))
-    sub_spec_1 = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater'], [1,2,3, 4], None)
+    # sub_spec_1 = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater'], [1,2,3, 4], None)
     sub_spec_1_prime = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater_prime'], [1,2,3, 4],
                                                          None)
     sub_spec_2 = EllipsoidalSignalTemporalLogic.globally(atomic_interval_dict['HeightAlways'], full_time_horizon)
     sub_spec_3 = EllipsoidalSignalTemporalLogic.globally(atomic_interval_dict['VelocityBounds'], full_time_horizon)
 
 
-    spec_1 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1, 1: sub_spec_2, 2: sub_spec_3})
+    #spec_1 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1, 1: sub_spec_2, 2: sub_spec_3})
     spec_2 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1_prime, 1: sub_spec_2, 2: sub_spec_3})
 
-    return spec_1, spec_2, atomic_interval_dict
+    end = time.perf_counter()
+    runtime = end - start
+
+    return None, spec_2, atomic_interval_dict, runtime
 
 
 
@@ -132,19 +127,30 @@ if __name__ == '__main__':
     for EVAL_TYPE in ["ellipsoid", "scenario_opt"]: #, "zono", "scenario_opt"
 
         if EVAL_TYPE == "ellipsoid":
+
             # 1. Load reachable sets
-            ellipsoids_Ab_dict = get_reachable_sets(os.path.join(os.path.dirname(__file__)) + "/reachable_sets_quadrotor.pkl")
+            ellipsoids_Ab_dict = get_reachable_sets(
+                os.path.join(os.path.dirname(__file__)) + "/reachable_sets_quadrotor.pkl")
 
-            # 2. Compute pacSTL and store also intermediate results
-            spec_1, spec_2, atomic_interval_dict = eval_with_sets(ellipsoids_Ab_dict)
-            print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
-            print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
-            print("Robustness spec 2 interval:", spec_2.low, spec_2.high)
-            print("Robustness spec 2 critical time steps:", spec_2.t_low, spec_2.t_high)
+            runtimes = []
+
+            for i in range(10): #loop for runtime eval --- set to 1 otherwise
+
+                # 2. Compute pacSTL and store also intermediate results
+                _, spec_2, atomic_interval_dict, runtime = eval_with_sets(ellipsoids_Ab_dict)
+                #print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
+                #print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
+                print("Robustness spec 2 interval:", spec_2.low, spec_2.high)
+                print("Robustness spec 2 critical time steps:", spec_2.t_low, spec_2.t_high)
+                runtimes.append(runtime)
+
+            average_runtime = np.mean(runtimes)
+            std_runtime = np.std(runtimes)
+            print("Average runtime:", average_runtime)
+            print("Std runtime:", std_runtime)
 
 
-            data_runs[EVAL_TYPE] = {"spec1 interval": [ spec_1.low, spec_1.high, [spec_1.t_low, spec_1.t_high]],
-                                "spec2 interval": [spec_2.low, spec_2.high, [spec_2.t_low, spec_2.t_high]],
+            data_runs[EVAL_TYPE] = {"spec2 interval": [spec_2.low, spec_2.high, [spec_2.t_low, spec_2.t_high], [average_runtime, std_runtime]],
                                 }
 
         elif EVAL_TYPE == "scenario_opt":
@@ -200,11 +206,7 @@ if __name__ == '__main__':
 
 
             epsilon_h1 = binomial_tail(spec_1_violations, ndata)
-            # if not epsilon_h1.success:
-            #     epsilon_h1 = spec_1_violations
             epsilon_h2 = binomial_tail(spec_2_violations, ndata)
-            # if not epsilon_h2.success:
-            #     epsilon_h2 = spec_2_violations
             print("Epsilon spec 1:", epsilon_h1)
             # 0.0208
             print("Epsilon spec 2:", epsilon_h2)

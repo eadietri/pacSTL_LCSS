@@ -1,7 +1,6 @@
 import numpy as np 
 import cvxpy as cp
 from scipy.special import gamma
-from scipy.optimize import minimize, NonlinearConstraint
 from numpy.linalg import det, inv
 
 

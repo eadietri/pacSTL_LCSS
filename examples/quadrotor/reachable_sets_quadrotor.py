@@ -1,10 +1,8 @@
 import numpy as np
 import os
 import pickle
-import matplotlib.pyplot as plt
 from quadrotor_utils import make_quadrotor_samples
 from reachability_utils.ellipsoids import p_ball
-from reachability_utils.plot_reachable_sets import plot, project_ellipsoid_to_2d, plot_ellipse
 
 
 reachable_set_data = {}

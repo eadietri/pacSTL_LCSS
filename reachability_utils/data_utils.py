@@ -1,7 +1,5 @@
 import numpy as np
-import pandas as pd
 import os
-import math
     
 script_path = os.path.abspath(__file__)
 script_directory = os.path.dirname(script_path)

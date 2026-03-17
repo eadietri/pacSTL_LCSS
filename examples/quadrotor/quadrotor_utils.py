@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.integrate import odeint
-import matplotlib.pyplot as plt
 from numpy.random import default_rng
 
 from pacSTL.pacSTL_utils import EllipsoidalSignalTemporalLogic

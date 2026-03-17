@@ -36,6 +36,7 @@ def generate_reachable_sets(file):
     with open(file, 'wb') as f:
         pickle.dump(reachable_set_data, f)
 
+    # --- Plotting Code ---
     # fig, ax = plt.subplots()
     # i = 0
     # for step in reachable_set_data.values():
@@ -46,7 +47,8 @@ def generate_reachable_sets(file):
     # plt.xlabel("x")
     # plt.ylabel("y")
     # plt.show()
-
+    # ---------------------
+    
 if __name__ == '__main__':
     script_path = os.path.abspath(__file__)
     script_directory = os.path.dirname(script_path)

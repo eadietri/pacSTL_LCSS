@@ -4,46 +4,51 @@ import numpy as np
 import copy
 import time
 import os
-import sys
 import enum
 
 from pacSTL.pacSTL_utils import EllipsoidalSignalTemporalLogic
-from reachability_utils.trigonometry_utils import normalize_radian, rotation_matrix, normalize_radian_pi
+from reachability_utils.trigonometry_utils import rotation_matrix
 from evaluate_reachable_sets import get_reachable_sets
 from vessel_utils import S_DDOT_MAX, S_DDOT_MAX_DRILL, T_H, R_EGO, R_EGO_DRILL, S_DOT_MAX_DRILL, \
     D_DOT_MAX_DRILL, InFrontRobustness, CollisionRobustness
-from vessel_utils import step_mock_sim
+from vessel_utils import step_mock_sim, DrillshipSimulator
 
 import matplotlib.pyplot as plt
-
+from collections import Counter
+import pandas as pd
+import pickle
 
 ros_dict = {
     "ego": {
-        "p_x": 5.0,
+        "p_x": 7.0,
         "p_y": -1.0,
-        "v_x": -0.09 *4,
-        "v_y": 0.026*4,
+        "v_x": -0.09 *2,
+        "v_y": 0.026*2,
         "psi": 2.89
     },
     "other": {
         "p_x": -4.0,
         "p_y": 1.5,
-        "v_x": 0.35,
+        "v_x": 0.33,
         "v_y": 0.0,
         "psi": 5.812238456841166,
         "u": 0.09
-    }
+    },
+    "initial_other": {
+            "p_x": -4.0,
+            "p_y": 1.5,
+            "psi": 5.812238456841166,
+        }
 }
 
 MAX_TRAJ_LENGTH = 100
 PRED_HORIZON = 5  # in DT
-DT_SIM = 1.0  # in s
 DT = 0.5  # in s
 MIN_MANEUVER_STEPS = 10
 MIN_TURNING_ANGLE = -0.8  # in rad
-TIME_TURNING = DT * 60  # in s
+TIME_TURNING = DT * 45  # in s
 TIME_PARALLEL = DT * 30  # in s
-DEBUG = True
+DEBUG = False
 
 
 class ConfigType(enum.Enum):
@@ -64,7 +69,6 @@ def transform_and_pred(state_ego, translation, rotation):
     vel_ego_tank = np.array([-state_ego["v_x"], state_ego["v_y"]])
     pos_ego_other = rotation_matrix(rotation + np.pi, radian=True) @ (pos_ego_tank + translation)
     vel_ego_other = rotation_matrix(rotation + np.pi, radian=True) @ vel_ego_tank
-    # TODO double check rad norm
     head = -state_ego["psi"] + rotation
     abs_vel = np.linalg.norm(np.array([state_ego["v_x"], state_ego["v_y"]]))
 
@@ -106,9 +110,6 @@ def thread_atomic_pred(func, state_ego_array, ellipsoid_A, ellipsoid_b, center, 
 def get_atomic_intervals(pred_states_ego_in_other_frame, ellipsoids_Ab_dict, robustness_fun_dict):
     atomic_interval_dict = {}
 
-    # could be in parallel instead of a loop
-    # todo make states dict
-    # parallelize this -- all the functions and all of the timesteps
     i = 1
     while i <= PRED_HORIZON:
         atomic_interval_dict[i] = {}
@@ -116,18 +117,11 @@ def get_atomic_intervals(pred_states_ego_in_other_frame, ellipsoids_Ab_dict, rob
                                                                                 ellipsoids_Ab_dict[i][0],
                                                                                 ellipsoids_Ab_dict[i][1],
                                                                                 ellipsoids_Ab_dict[i][2], i)
-        # start = time.perf_counter()
-        # --- code to measure ---
-        # i = 0
-        # while i <= PRED_HORIZON:
+
         atomic_interval_dict[i]['Coll'] = robustness_fun_dict['Coll'](
             pred_states_ego_in_other_frame[i],
             ellipsoids_Ab_dict[i][0],
             ellipsoids_Ab_dict[i][1], ellipsoids_Ab_dict[i][2], i)
-        # print(atomic_interval_dict[i]['Coll'].low)
-        # print(atomic_interval_dict[i]['Coll'].high)
-        # end = time.perf_counter()
-        # print(f"Elapsed: {end - start:.6f} sec")
 
         i += 1
 
@@ -163,20 +157,13 @@ def pre_script():
         robustness_fun_dict['Coll'] = CollisionRobustness(t_h=T_H, r_ego=R_EGO_DRILL)
 
 
-    ellipsoids_Ab_dicts = []
-
     if CONFIGVESSELS == ConfigType.VD or CONFIGVESSELS == ConfigType.DD:
-
-        for i in range(4):
-            ellipsoids_Ab_dicts.append(get_reachable_sets(
-                os.path.join(os.path.dirname(__file__)) + "/../ellipsoids/reachable_sets_u" + str(i + 1) + ".pkl"))
+        ellipsoids_Ab_dict = get_reachable_sets(os.path.join(os.path.dirname(__file__)) + "/reachable_sets_vessel.pkl")
     else:
-        for i in range(4):
-            ellipsoids_Ab_dicts.append(get_reachable_sets(
-                os.path.join(os.path.dirname(__file__)) + "/../ellipsoids/voyager_reachable_set_u" + str(
-                    i + 1) + ".pkl"))
+        print("sets not computed.")
+        raise ValueError
 
-    return ellipsoids_Ab_dicts, robustness_fun_dict
+    return ellipsoids_Ab_dict, robustness_fun_dict
 
 
 def main(ros_dict):
@@ -185,27 +172,17 @@ def main(ros_dict):
     i = 0
     logging_dict = {}
 
-    ellipsoids_Ab_dicts, robustness_fun_dict = pre_script()
+    ellipsoids_Ab_dict, robustness_fun_dict = pre_script()
     waypoints = [np.array([-4., 1.5])]  # in tank cosy
     maneuvering = False
+    simulator = DrillshipSimulator()
+
+
 
     while not done:
-        # transform ego states in tank world frame to other (ellipsoid) world frame
-        # todo: angle wrapping needs to be checked
         state_other = ros_dict["other"]
         state_ego = ros_dict["ego"]
-        # state_ego_array = np.array([state_ego["p_x"], state_ego["p_y"], state_ego["psi"], np.linalg.norm(np.array([state_ego["v_x"], state_ego["v_y"] ]))])
 
-        if state_other['u'] < 0.1:
-            ellipsoids_Ab_dict = ellipsoids_Ab_dicts[0]
-        elif state_other['u'] < 0.3:
-            ellipsoids_Ab_dict = ellipsoids_Ab_dicts[1]
-        elif state_other['u'] < 0.5:
-            ellipsoids_Ab_dict = ellipsoids_Ab_dicts[2]
-        else:
-            ellipsoids_Ab_dict = ellipsoids_Ab_dicts[3]
-
-        # note: angle ego between 0 and 2pi now
         pred_states_ego_in_other_frame = transform_and_pred(state_ego=state_ego, translation=-np.array(
             [-state_other["p_x"], state_other["p_y"]]), rotation=state_other["psi"])
         print("transform check")
@@ -213,109 +190,215 @@ def main(ros_dict):
             [state_other["p_x"] - state_ego["p_x"], state_other["p_y"] - state_ego["p_y"]]))
         print(abs(pred_states_ego_in_other_frame[0][2]) - abs(state_ego['psi'] - state_other['psi']))
 
-        if DEBUG and i % 10 == 0:
+        logging_dict[i] = {"step": i, "ego": copy.deepcopy(state_ego), "other": copy.deepcopy(state_other), "encounter": False}
 
-            # project_plot_ellipsoid_2d(ellipsoids_Ab_dict, 0,2, PRED_HORIZON)
-            # project_plot_ellipsoid_2d(ellipsoids_Ab_dict, 1, 3, PRED_HORIZON)
-            # project_plot_ellipsoid_2d(ellipsoids_Ab_dict, 3, 5, PRED_HORIZON)
-            x1, x2, y1, y2 = [], [], [], []
-            for timestep in range(PRED_HORIZON + 1):
-                x1.append(pred_states_ego_in_other_frame[timestep][0])
-                y1.append(pred_states_ego_in_other_frame[timestep][1])
-            plt.scatter(x1, y1, color="blue", marker="o", label="Ego")
-            plt.scatter([0], [0], color="red", marker="s", label="Other")
-            """
-            plt.xlabel("x")
-            plt.ylabel("y")
-            plt.legend()
-            plt.grid(True)
-            plt.axis("equal")  # keep aspect ratio square
-            plt.show()
-
-            x1b, y1b, x2b, y2b =  [-state_ego["p_x"], -state_ego["p_x"]+np.cos(-state_ego['psi']+np.pi)], [state_ego['p_y'], state_ego['p_y']+np.sin(-state_ego['psi']+np.pi)], [-state_other["p_x"], -state_other["p_x"]+np.cos(-state_other['psi']+np.pi)], [state_other["p_y"], state_other["p_y"]+np.sin(-state_other['psi']+np.pi)]
-            for timestep in range(PRED_HORIZON + 1):
-                x1.append(pred_states_ego_in_other_frame[timestep][0])
-                y1.append(pred_states_ego_in_other_frame[timestep][1])
-            plt.scatter(x1b, y1b, color="blue", marker="o", label="Ego in World")
-            plt.scatter(x2b, y2b, color="red", marker="s", label="Other in world")
-            """
-            x_vals = np.linspace(0, 20, 200)  # range for x
-            """
-            a, b = np.array([-1.7267251790421878, 1.8078772513812225]), -4.835673698084119 #left
-            a2, b2 = np.array([1.0042604722385482,-2.2894237056296953]), -2.1043084288841305# right
-            a3, b3 =np.array( [-1.0042604722385482, 2.2894237056296953]), 2.1043084288841305
-            a4, b4 = np.array([-2.452516971316602, -0.48493350616764186]), -18.992462222501274
-            if a[1] != 0:  # non-vertical line
-                y_vals = (b - a[0] * x_vals) / a[1]
-                plt.plot(x_vals, y_vals, label=f"front left ")
-                y_vals2 = (b2 - a2[0] * x_vals) / a2[1]
-                plt.plot(x_vals, y_vals2, label=f"front right ")
-                y_vals3 = (b3 - a3[0] * x_vals) / a3[1]
-                plt.plot(x_vals, y_vals3, label=f"right left ")
-                y_vals4 = (b4 - a4[0] * x_vals) / a4[1]
-                plt.plot(x_vals, y_vals4, label=f"right right ")
-            else:  # vertical line
-                x_line = np.full_like(x_vals, b / a[0])
-                plt.plot(x_line, x_vals, label=f"x = {b / a[0]}")
-
-            """
-
-            # xlo = [-10, -10]
-            # xhi = [10, 10]
-            # xc = np.array([0, 0, 0, 0])
-            #
-            # xmin = xlo[0] - 0.45 * (xhi[0] - xlo[0])
-            # xmax = xhi[0] + 0.45 * (xhi[0] - xlo[0])
-            # ymin = xlo[1] - 0.45 * (xhi[1] - xlo[1])
-            # ymax = xhi[1] + 0.45 * (xhi[1] - xlo[1])
-            #
-            # nmgrid = 100
-            # x_grid = np.linspace(xmin, xmax, nmgrid)
-            # y_grid = np.linspace(ymin, ymax, nmgrid)
-            #
-            # [X, Y] = np.meshgrid(x_grid, y_grid)
-            # Zxy_full = np.zeros((nmgrid, nmgrid))
-            # for i in range(nmgrid):
-            #     for j in range(nmgrid):
-            #         Zxy_full[i, j] = proj_to_2_plotting(X[i, j], Y[i, j], ellipsoids_Ab_dict[2][0], ellipsoids_Ab_dict[2][1], 2, xc)
-
-            plt.xlabel("x")
-            plt.ylabel("y")
-            plt.legend()
-            plt.grid(True)
-            plt.axis("equal")  # keep aspect ratio square
-            plt.show()
-
-        # select correct rechable sets
 
         # compute atomic predicate intervals
         start = time.perf_counter()
         atomic_interval_dict = get_atomic_intervals(pred_states_ego_in_other_frame, ellipsoids_Ab_dict,
                                                     robustness_fun_dict)
+        # compute specification intervals for persistent encounter
+        robustness_head = get_ISTL_persistent_encounter(atomic_interval_dict)
         end = time.perf_counter()
         print(f"Elapsed: {end - start:.6f} sec")
 
-        # compute specification intervals for persistent encounter
-        robustness_head = get_ISTL_persistent_encounter(atomic_interval_dict)
+        logging_dict[i]['runtime'] = end - start
+        logging_dict[i]['robustness'] = [robustness_head.low, robustness_head.high, robustness_head.t_low, robustness_head.t_high]
+
 
         # waypoint generation in tank cosy directly
-        if (robustness_head.high > 0) and not maneuvering:
+        if (robustness_head.high > 0) and not maneuvering: ## make the following optimistic semantics: (robustness_head.low > 0) and not maneuvering:
             waypoints_man = get_wp(state_ego)
             waypoints_man.extend(waypoints)
             waypoints = waypoints_man
             maneuvering = True
+            logging_dict[i]['encounter'] = [True, waypoints]
 
-        # logging
-        logging_dict[i] = {"step": i, "ego": copy.deepcopy(state_ego), "other": copy.deepcopy(state_other)}
+
+        if i % 5 == 0:
+            # random initial tau
+            # forces x, y, z, moments x, y, z
+            tau_cmd = np.array(
+                [np.random.uniform(0.7, 1.2), np.random.uniform(-0.1, 0.1), 0, 0, 0, np.random.uniform(-0.1, 0.1)],
+                dtype=float).reshape(-1, 1)
+
+        done, waypoints, ros_dict = step_mock_sim(waypoints, ros_dict, simulator,tau_cmd)
+
         i += 1
-        # print(state_ego)
-        # print(state_other)
-        # print(i)
-
-        done, waypoints, ros_dict = step_mock_sim(waypoints, ros_dict)
 
     return logging_dict
 
+def evaluation_of_runs(data):
+
+    # --- 1. Initialize Data Containers ---
+    times = []
+    rob_lower, rob_upper = [], []
+    ego_px, ego_py = [], []
+    other_px, other_py = [], []
+
+    # Containers for the encounter markers
+    enc_times, enc_rob_low, enc_rob_high = [], [], []
+    enc_ego_px, enc_ego_py = [], []
+    enc_other_px, enc_other_py = [], []
+
+    runtimes = []
+    rob_integers = []
+
+    dt = 0.5
+
+    # --- 2. Extract Data ---
+    # Sorting keys ensures the time steps are processed in chronological order
+    for step in sorted(data.keys()):
+        entry = data[step]
+
+        # Calculate time
+        t = step * dt
+        times.append(t)
+
+        # Robustness bounds (first 2 entries)
+        r_low = entry['robustness'][0]
+        r_high = entry['robustness'][1]
+        rob_lower.append(r_low)
+        rob_upper.append(r_high)
+
+        # Trajectories
+        e_px, e_py = entry['ego']['p_x'], entry['ego']['p_y']
+        o_px, o_py = entry['other']['p_x'], entry['other']['p_y']
+        ego_px.append(e_px)
+        ego_py.append(e_py)
+        other_px.append(o_px)
+        other_py.append(o_py)
+
+        # Check for encounter (if it is a list, it's an encounter)
+        if isinstance(entry['encounter'], list):
+            enc_times.append(t)
+            enc_rob_low.append(r_low)
+            enc_rob_high.append(r_high)
+            enc_ego_px.append(e_px)
+            enc_ego_py.append(e_py)
+            enc_other_px.append(o_px)
+            enc_other_py.append(o_py)
+
+        # Stats collection
+        runtimes.append(entry['runtime'])
+        # logic according to epsilon values for the sets -- always take the timestep that corresponds to the most conservative epsilon
+        if 4 in entry['robustness'][-2:]:
+            rob_integers.extend([4])
+        elif 1 in entry['robustness'][-2:]:
+            rob_integers.extend([1])
+        elif 3 in entry['robustness'][-2:]:
+            rob_integers.extend([3])
+        elif 2 in entry['robustness'][-2:]:
+            rob_integers.extend([2])
+        elif 5 in entry['robustness'][-2:]:
+            rob_integers.extend([5]) 
+
+    # --- 3. Compute and Print Evaluations ---
+    print("=== Evaluation Results ===")
+
+    # Runtimes
+    avg_runtime = np.mean(runtimes)
+    std_runtime = np.std(runtimes)
+    print(f"Runtime -> Average: {avg_runtime:.5f}s, Std Dev: {std_runtime:.5f}s")
+
+    # Robustness Integers Count
+    counts = Counter(rob_integers)
+    print("\nRobustness Integers Frequency (from the last two values):")
+    for i in range(1, 6):
+        print(f"  Integer {i}: occurs {counts.get(i, 0)} time(s)")
+    print("==========================\n")
+
+    # --- 4. Plotting ---
+
+    # Plot 1: Robustness over Time
+    plt.figure(figsize=(10, 5))
+    plt.plot(times, rob_lower, label='Lower Robustness', color='blue')
+    plt.plot(times, rob_upper, label='Upper Robustness', color='orange')
+
+    # Add Encounter Markers
+    plt.scatter(enc_times, enc_rob_low, color='red', marker='x', s=80, zorder=5, label='Encounter (Lower)')
+    plt.scatter(enc_times, enc_rob_high, color='darkred', marker='o', s=80, zorder=5, label='Encounter (Upper)')
+
+    plt.title('Robustness Bounds Over Time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Robustness Value')
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    # Plot 2: Trajectories
+    plt.figure(figsize=(8, 8))
+    plt.plot(ego_px, ego_py, label='Ego Trajectory', color='blue')
+    plt.plot(other_px, other_py, label='Other Trajectory', color='green')
+
+    # Add Encounter Markers
+    plt.scatter(enc_ego_px, enc_ego_py, color='blue', marker='x', s=100, zorder=5, label='Ego at Encounter')
+    plt.scatter(enc_other_px, enc_other_py, color='green', marker='x', s=100, zorder=5, label='Other at Encounter')
+
+    plt.title('Ego vs Other Trajectories')
+    plt.xlabel('Position X ($p_x$)')
+    plt.ylabel('Position Y ($p_y$)')
+    plt.axis('equal')  # Ensures the spatial scale is 1:1, crucial for trajectory plots
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def export_logs_to_csv(logs_list, dt=0.5, rob_filename="robustness_traces.csv", states_filename="vessel_states.csv"):
+    """
+    logs_list: A list containing your 3 dictionary logs (e.g., [log1, log2, log3])
+    """
+    rob_data = []
+    states_data = []
+
+    # Assuming all logs share the same time steps, we use the keys from the first log
+    time_steps = sorted(logs_list[1].keys())
+
+    for step in time_steps:
+        t = step * dt
+
+        # Initialize rows with time
+        rob_row = {'time': t}
+        state_row = {}
+
+        # Loop through each of the 3 runs
+        for i, log in enumerate(logs_list):
+            run_idx = i + 1  # 1, 2, 3
+            entry = log[step]
+
+            # Robustness (Wide format)
+            rob_row[f'run{run_idx}_lower'] = entry['robustness'][0]
+            rob_row[f'run{run_idx}_upper'] = entry['robustness'][1]
+
+            # States (Wide format)
+            state_row[f'run{run_idx}_ego_px'] = entry['ego']['p_x']
+            state_row[f'run{run_idx}_ego_py'] = -entry['ego']['p_y']
+            state_row[f'run{run_idx}_ego_psi'] = entry['ego']['psi']
+
+            state_row[f'run{run_idx}_other_px'] = entry['other']['p_x']
+            state_row[f'run{run_idx}_other_py'] = -entry['other']['p_y']
+            state_row[f'run{run_idx}_other_psi'] = entry['other']['psi']
+
+        rob_data.append(rob_row)
+        states_data.append(state_row)
+
+    # Convert to DataFrames and export
+    df_rob = pd.DataFrame(rob_data)
+    df_states = pd.DataFrame(states_data)
+
+    # Export without the index column so PGFPlots reads it cleanly
+    df_rob.to_csv(rob_filename, index=False)
+    df_states.to_csv(states_filename, index=False)
+    print(f"Exported: {rob_filename} and {states_filename}")
 
 if __name__ == '__main__':
-    main(ros_dict)
+
+    script_path = os.path.abspath(__file__)
+    script_directory = os.path.dirname(script_path)
+
+    logs = main(ros_dict)
+    file = os.path.join(script_directory, 'vessel_example_traces.pkl')
+    with open(file, 'wb') as f:
+        pickle.dump(logs, f)
