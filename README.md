@@ -18,7 +18,7 @@ Additionally, we define the set of inputs as the set of constant functions τ (t
 
 τ_low = [0.7, -0.1, 0, 0, 0], τ_high = [1.2, 0.1, 0, 0, 0]
 
-## Vessel Navigation:
+## Vessel Navigation Monitoring:
 
 | Parameter | Value|
 |-----------|------|
@@ -47,3 +47,5 @@ The quadrotor model consists of pn, pe, and h (the y-axis, "north", the x-axis, 
 
 Additionally, we add constant disturbance to ϕ'', θ'', and ψ'', to mimic unbounded real-world uncertainty, parameterized as the following set of functions:
 ϕ''(t) = ϕ''(t) + (μ = 0 , σ = 0.02), θ''(t) = θ''(t) + (μ = 0 , σ = 0.02), and ψ''(t) = ψ''(t) + (μ = 0 , σ = 0.02).
+
+## Quadrotor Verification:
