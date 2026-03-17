@@ -89,7 +89,17 @@ The ego vessel is initialized at $p_x =  7.0, p_y = -1,0, \psi = 2.89, v_x = -0.
 
 
 # Installation 
+<pre>git clone https://github.com/eadietri/pacSTL_LCSS.git
+</pre>
 
+<pre>python -m venv venv
+source venv/bin/activate
+</pre>
+
+<pre>pip install -e  
+</pre>
+
+# Run Instructions
 
 # References
 

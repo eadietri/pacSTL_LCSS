@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from plot_reachable_sets import convert_A_b_to_Q_c_r
+from reachability_utils.plot_reachable_sets import convert_A_b_to_Q_c_r
 from scipy.optimize import minimize
 
 def rotation_matrix(angle, radian=False):

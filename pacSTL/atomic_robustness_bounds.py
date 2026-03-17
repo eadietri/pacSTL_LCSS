@@ -3,14 +3,11 @@ import scipy.optimize
 from scipy.optimize import NonlinearConstraint
 from scipy.optimize import brentq
 import cvxpy as cp
-
-import gurobipy as gp
-from gurobipy import GRB
 import numpy as np
 
 from abc import ABC
 
-from pacSTL_utils import SignalTemporalLogic
+from pacSTL.pacSTL_utils import SignalTemporalLogic
 
 class Predicate(ABC):
     """

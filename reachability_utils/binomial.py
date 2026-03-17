@@ -1,6 +1,6 @@
 import math
 from scipy.optimize import minimize, NonlinearConstraint
-from ellipsoids import in_ellipsoid
+from reachability_utils.ellipsoids import in_ellipsoid
 from scipy.stats import binom, beta
 
 

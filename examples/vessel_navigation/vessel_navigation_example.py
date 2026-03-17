@@ -8,7 +8,7 @@ import enum
 
 from pacSTL.pacSTL_utils import EllipsoidalSignalTemporalLogic
 from reachability_utils.trigonometry_utils import rotation_matrix
-from evaluate_reachable_sets import get_reachable_sets
+from examples.evaluate_reachable_sets import get_reachable_sets
 from vessel_utils import S_DDOT_MAX, S_DDOT_MAX_DRILL, T_H, R_EGO, R_EGO_DRILL, S_DOT_MAX_DRILL, \
     D_DOT_MAX_DRILL, InFrontRobustness, CollisionRobustness
 from vessel_utils import step_mock_sim, DrillshipSimulator
@@ -185,7 +185,6 @@ def main(ros_dict):
 
         pred_states_ego_in_other_frame = transform_and_pred(state_ego=state_ego, translation=-np.array(
             [-state_other["p_x"], state_other["p_y"]]), rotation=state_other["psi"])
-        print("transform check")
         print(np.linalg.norm(pred_states_ego_in_other_frame[0][0:2]) - np.linalg.norm(
             [state_other["p_x"] - state_ego["p_x"], state_other["p_y"] - state_ego["p_y"]]))
         print(abs(pred_states_ego_in_other_frame[0][2]) - abs(state_ego['psi'] - state_other['psi']))

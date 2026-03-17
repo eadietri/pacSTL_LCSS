@@ -104,14 +104,14 @@ def eval_with_sets(sets_Ab_dict):
 
     # specification evaluation
     full_time_horizon = list(range(1, PRED_HORIZON+1))
-    # sub_spec_1 = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater'], [1,2,3, 4], None)
+    sub_spec_1 = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater'], [1,2,3, 4], None)
     sub_spec_1_prime = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater_prime'], [1,2,3, 4],
                                                          None)
     sub_spec_2 = EllipsoidalSignalTemporalLogic.globally(atomic_interval_dict['HeightAlways'], full_time_horizon)
     sub_spec_3 = EllipsoidalSignalTemporalLogic.globally(atomic_interval_dict['VelocityBounds'], full_time_horizon)
 
 
-    #spec_1 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1, 1: sub_spec_2, 2: sub_spec_3})
+    spec_1 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1, 1: sub_spec_2, 2: sub_spec_3})
     spec_2 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1_prime, 1: sub_spec_2, 2: sub_spec_3})
 
     end = time.perf_counter()
@@ -138,8 +138,8 @@ if __name__ == '__main__':
 
                 # 2. Compute pacSTL and store also intermediate results
                 _, spec_2, atomic_interval_dict, runtime = eval_with_sets(ellipsoids_Ab_dict)
-                #print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
-                #print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
+                print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
+                print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
                 print("Robustness spec 2 interval:", spec_2.low, spec_2.high)
                 print("Robustness spec 2 critical time steps:", spec_2.t_low, spec_2.t_high)
                 runtimes.append(runtime)

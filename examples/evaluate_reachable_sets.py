@@ -2,8 +2,8 @@ import numpy as np
 import os
 import pickle
 from reachability_utils.binomial import calculate_epsilon_ellipsoid, calculate_epsilon_misses, calculate_epsilon_tube_ellipsoid
-from vessel_navigation.vessel_utils import make_vessel_samples
-from quadrotor.quadrotor_utils import make_quadrotor_samples
+from examples.vessel_navigation.vessel_utils import make_vessel_samples
+from examples.quadrotor.quadrotor_utils import make_quadrotor_samples
 
 import matplotlib.pyplot as plt
 
