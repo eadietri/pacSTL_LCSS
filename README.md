@@ -100,7 +100,13 @@ source venv/bin/activate
 </pre>
 
 # Run Instructions
+**Quadrotor pacSTL**
+<pre> python3 examples/quadrotor/quadrotor_example.py
+</pre>
 
+**Vessel Navigation pacSTL**
+<pre> python3 examples/vessel_navigation/vessel_navigation_example.py
+</pre>
 # References
 
 [1] P.-J. Meyer, A. Devonport, and M. Arcak, Interval Reachability Analysis: Bounding Trajectories of Uncertain Systems with Boxes for Control and Verification, 2021.

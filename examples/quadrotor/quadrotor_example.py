@@ -1,8 +1,8 @@
 from quadrotor_utils import HeightLater, HeightAlways, VelocityBound, AngularVelocityBound, make_quadrotor_samples
 from pacSTL.pacSTL_utils import SignalTemporalLogic, EllipsoidalSignalTemporalLogic
 from reachability_utils.binomial import binomial_tail
+from examples.evaluate_reachable_sets import get_reachable_sets
 
-import pickle
 import numpy as np
 import os
 import time
@@ -10,11 +10,6 @@ import time
 
 PRED_HORIZON = 19
 
-def get_reachable_sets(file):
-    with open(file, 'rb') as f:
-        data = pickle.load(f)
-
-    return data
 
 def evaluate_traces(states):
     """
@@ -104,14 +99,14 @@ def eval_with_sets(sets_Ab_dict):
 
     # specification evaluation
     full_time_horizon = list(range(1, PRED_HORIZON+1))
-    sub_spec_1 = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater'], [1,2,3, 4], None)
+    # sub_spec_1 = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater'], [1,2,3, 4], None)
     sub_spec_1_prime = EllipsoidalSignalTemporalLogic.eventually_globally(atomic_interval_dict['HeightLater_prime'], [1,2,3, 4],
                                                          None)
     sub_spec_2 = EllipsoidalSignalTemporalLogic.globally(atomic_interval_dict['HeightAlways'], full_time_horizon)
     sub_spec_3 = EllipsoidalSignalTemporalLogic.globally(atomic_interval_dict['VelocityBounds'], full_time_horizon)
 
 
-    spec_1 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1, 1: sub_spec_2, 2: sub_spec_3})
+    #spec_1 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1, 1: sub_spec_2, 2: sub_spec_3})
     spec_2 = EllipsoidalSignalTemporalLogic.conjunction({0: sub_spec_1_prime, 1: sub_spec_2, 2: sub_spec_3})
 
     end = time.perf_counter()
@@ -124,7 +119,7 @@ def eval_with_sets(sets_Ab_dict):
 if __name__ == '__main__':
 
     data_runs = {}
-    for EVAL_TYPE in ["ellipsoid", "scenario_opt"]: #, "zono", "scenario_opt"
+    for EVAL_TYPE in ["ellipsoid", "scenario_opt"]: 
 
         if EVAL_TYPE == "ellipsoid":
 
@@ -138,8 +133,8 @@ if __name__ == '__main__':
 
                 # 2. Compute pacSTL and store also intermediate results
                 _, spec_2, atomic_interval_dict, runtime = eval_with_sets(ellipsoids_Ab_dict)
-                print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
-                print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
+                #print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
+                #print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
                 print("Robustness spec 2 interval:", spec_2.low, spec_2.high)
                 print("Robustness spec 2 critical time steps:", spec_2.t_low, spec_2.t_high)
                 runtimes.append(runtime)
@@ -208,7 +203,6 @@ if __name__ == '__main__':
             epsilon_h1 = binomial_tail(spec_1_violations, ndata)
             epsilon_h2 = binomial_tail(spec_2_violations, ndata)
             print("Epsilon spec 1:", epsilon_h1)
-            # 0.0208
             print("Epsilon spec 2:", epsilon_h2)
 
             data_runs[EVAL_TYPE] = { "spec1 interval": [min_h1, max_h1, epsilon_h1],
