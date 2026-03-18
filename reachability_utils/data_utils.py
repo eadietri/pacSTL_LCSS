@@ -1,11 +1,4 @@
 import numpy as np
-import os
-    
-script_path = os.path.abspath(__file__)
-script_directory = os.path.dirname(script_path)
-
-filtered_file = os.path.join(script_directory, 'interpolated.csv')
-inocean = os.path.join(script_directory, 'filtered_drillship.csv')
 
 def quaternion_to_euler(x, y, z, w):
     """

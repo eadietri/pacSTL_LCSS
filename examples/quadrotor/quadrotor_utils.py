@@ -2,10 +2,10 @@ import numpy as np
 from scipy.integrate import odeint
 from numpy.random import default_rng
 
-from pacSTL.pacSTL_utils import EllipsoidalSignalTemporalLogic
+from pacSTL.pacSTL_utils import PACSignalTemporalLogic
 from pacSTL.atomic_robustness_bounds import Robustness, Predicate
 
-# Dynamics sampler -- https://easychair.org/publications/paper/gjfh/open contains c
+# Dynamics parameters from https://easychair.org/publications/paper/gjfh/open
 
 GRAVITY = 9.81
 M = 1
@@ -18,7 +18,7 @@ INERTIA_Y = 0.4 * M * (R**2) +  2 * M_ROTOR *(L**2)
 INERTIA_Z = 0.4 * M * (R**2) +  4 * M_ROTOR *(L**2)
 H_REF = 1
 T_FINAL = 5
-DT = 0.25 # potentially refine more
+DT = 0.25
 MIN_X0 = -0.2
 MAX_X0 = 0.2
 
@@ -145,7 +145,7 @@ class HeightLater(Robustness):
         min_h = self.min_linear_predicates(self.pred.A, self.pred.threshold, ellipsoid_A, ellipsoid_b,center)
         max_h = self.max_linear_predicates(self.pred.A, self.pred.threshold, ellipsoid_A, ellipsoid_b,center)
 
-        return EllipsoidalSignalTemporalLogic(min(min_h, max_h), max(min_h, max_h), time_step, time_step)
+        return PACSignalTemporalLogic(min(min_h, max_h), max(min_h, max_h), time_step, time_step)
 
     def __call__(self, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(ellipsoid_A, ellipsoid_b,center, time_step)
@@ -165,7 +165,7 @@ class HeightAlways(Robustness):
         min_h = self.min_linear_predicates(self.pred.A, self.pred.threshold, ellipsoid_A, ellipsoid_b,center)
         max_h = self.max_linear_predicates(self.pred.A, self.pred.threshold, ellipsoid_A, ellipsoid_b,center)
 
-        return EllipsoidalSignalTemporalLogic(min(min_h, max_h), max(min_h, max_h), time_step, time_step)
+        return PACSignalTemporalLogic(min(min_h, max_h), max(min_h, max_h), time_step, time_step)
 
     def __call__(self, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(ellipsoid_A, ellipsoid_b,center, time_step)
@@ -184,10 +184,10 @@ class VelocityBound(Robustness):
         super().__init__(pred=predicate)
 
     def compute_robustness(self, ellipsoid_A, ellipsoid_b, center, time_step):
-        temp_1 = - self.min_quadratic_predicates(self.pred.Q, self.pred.threshold, self.pred.Q_factor, ellipsoid_A, ellipsoid_b,center)
+        temp_1 = - self.min_quadratic_predicates(self.pred.Q, self.pred.threshold, ellipsoid_A, ellipsoid_b, center=center)
         temp_2 = - self.max_quadratic_predicates_langrage(ellipsoid_A, center, [6,7,8], 1.0, self.pred.threshold)
 
-        return EllipsoidalSignalTemporalLogic(min(temp_1, temp_2), max(temp_1, temp_2), time_step, time_step)
+        return PACSignalTemporalLogic(min(temp_1, temp_2), max(temp_1, temp_2), time_step, time_step)
 
     def __call__(self, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(ellipsoid_A, ellipsoid_b,center, time_step)
@@ -206,10 +206,10 @@ class AngularVelocityBound(Robustness):
         super().__init__(pred=predicate)
 
     def compute_robustness(self, ellipsoid_A, ellipsoid_b, center, time_step):
-        temp_1 = - self.min_quadratic_predicates(self.pred.Q, self.pred.threshold, self.pred.Q_factor, ellipsoid_A, ellipsoid_b,center)
+        temp_1 = - self.min_quadratic_predicates(self.pred.Q, self.pred.threshold, ellipsoid_A, ellipsoid_b, center=center)
         temp_2 = - self.max_quadratic_predicates_langrage(ellipsoid_A, center, [9,10,11], 1.0, self.pred.threshold)
 
-        return EllipsoidalSignalTemporalLogic(min(temp_1, temp_2), max(temp_1, temp_2), time_step, time_step)
+        return PACSignalTemporalLogic(min(temp_1, temp_2), max(temp_1, temp_2), time_step, time_step)
 
     def __call__(self, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(ellipsoid_A, ellipsoid_b,center, time_step)

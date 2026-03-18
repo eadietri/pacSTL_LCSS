@@ -7,7 +7,7 @@ from numpy.random import default_rng
 
 from reachability_utils.trigonometry_utils import rotation_matrix, normalize_degree
 from pacSTL.atomic_robustness_bounds import Predicate, Robustness
-from pacSTL.pacSTL_utils import EllipsoidalSignalTemporalLogic, SignalTemporalLogic
+from pacSTL.pacSTL_utils import PACSignalTemporalLogic, SignalTemporalLogic
 from reachability_utils.data_utils import body_to_world
 from examples.vessel_navigation.shoebox_sim import BaseSimulator
 
@@ -224,7 +224,7 @@ R_EGO_DRILL = 2.6 #in m
 
 DT_SIM = 0.5
 
-def step_mock_sim(waypoints, ros_dict, simulator, tau_cmd):
+def step_sim(waypoints, ros_dict, simulator, tau_cmd):
 
     # mock step ego
     current_wp = waypoints[0]
@@ -379,7 +379,7 @@ class InFrontRobustness(Robustness):
         min_h = self.min_linear_predicates(pred_A, pred_b, ellipsoid_A, ellipsoid_b,center)
         max_h = self.max_linear_predicates(pred_A, pred_b, ellipsoid_A, ellipsoid_b,center)
 
-        return EllipsoidalSignalTemporalLogic(min(min_h, max_h), max(min_h, max_h), time_step, time_step)
+        return PACSignalTemporalLogic(min(min_h, max_h), max(min_h, max_h), time_step, time_step)
 
     def __call__(self, state_ego_array, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(state_ego_array, ellipsoid_A, ellipsoid_b,center, time_step)
@@ -401,10 +401,10 @@ class CollisionRobustness(Robustness):
         threshold = (np.linalg.norm(state_ego_array[0:2] - center[0:2]) + self.r_ego)**2 / self.t_h**2
         v_ego = np.zeros(5)
         v_ego[3:5] = state_ego_array[3:5]
-        temp_1 =  self.min_quadratic_predicates(self.Q, threshold, None, ellipsoid_A, ellipsoid_b,center, v_ego)
-        temp_2 =  self.max_quadratic_predicates_langrage(ellipsoid_A, center, [3,4], 1.0, threshold)
+        temp_1 =  self.min_quadratic_predicates(self.Q, threshold, ellipsoid_A, ellipsoid_b, x_offset=v_ego, center=center)
+        temp_2 =  self.max_quadratic_predicates_langrage(ellipsoid_A, center, [3,4], 1.0, threshold, x_offset=v_ego[3:5])
 
-        return EllipsoidalSignalTemporalLogic(min(temp_1, temp_2), max(temp_1, temp_2), time_step, time_step)
+        return PACSignalTemporalLogic(min(temp_1, temp_2), max(temp_1, temp_2), time_step, time_step)
 
     def __call__(self, state_ego_array, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(state_ego_array, ellipsoid_A, ellipsoid_b,center, time_step)

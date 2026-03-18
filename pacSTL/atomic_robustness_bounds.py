@@ -72,15 +72,15 @@ class Robustness:
         return rho
 
     @staticmethod
-    def min_quadratic_predicates(pred_Q_diag, pred_c, Q_factor, ellipsoid_A, ellipsoid_b, init, p_offset=None):
+    def min_quadratic_predicates_gurobi(pred_Q_diag, pred_c, ellipsoid_A, ellipsoid_b, x_offset=None):
         """
         Minimizes (p - p_offset)^T Q (p - p_offset) - c over an ellipsoidal constraint.
         """
         n = ellipsoid_A.shape[1]
 
         # If no offset is provided, default to the origin (zeros) to maintain backwards compatibility
-        if p_offset is None:
-            p_offset = np.zeros(n)
+        if x_offset is None:
+            x_offset = np.zeros(n)
 
         p = cp.Variable(n)
 
@@ -88,7 +88,7 @@ class Robustness:
         Q = np.diag(pred_Q_diag)
 
         # Generalized objective to include the offset
-        obj = cp.quad_form(p - p_offset, Q) - pred_c
+        obj = cp.quad_form(p - x_offset, Q) - pred_c
 
         # Ellipsoidal constraint: ||A p - b||_2 <= 1
         constraints = [cp.norm(ellipsoid_A @ p - ellipsoid_b, 2) <= 1]
@@ -99,6 +99,38 @@ class Robustness:
         rho = prob.value
 
         return rho
+
+    @staticmethod
+    def min_quadratic_predicates(pred_Q_diag, pred_c, ellipsoid_A, ellipsoid_b, center=None, x_offset=None):
+        n = ellipsoid_A.shape[1]
+
+        if x_offset is None:
+            x_offset = np.zeros(n)
+
+        # 1. Define the Objective Function
+        # (p - p_offset)^T * diag(Q) * (p - p_offset) - c
+        def objective(p):
+            diff = p - x_offset
+            return np.sum(pred_Q_diag * (diff ** 2)) - pred_c
+
+        # 2. Define the Ellipsoidal Constraint: ||A p - b||_2 <= 1
+        # We define it such that the result stays within the bound [0, 1]
+        def constraint_func(p):
+            return np.linalg.norm(ellipsoid_A @ p - ellipsoid_b)
+
+        # NonlinearConstraint(function, lower_bound, upper_bound)
+        cons = NonlinearConstraint(constraint_func, -np.inf, 1.0)
+
+        # 4. Solve
+        res = scipy.optimize.minimize(
+            objective,
+            center,
+            method='SLSQP',
+            constraints=[cons],
+            options={'ftol': 1e-9, 'disp': False}
+        )
+
+        return res.fun
 
 
     @staticmethod

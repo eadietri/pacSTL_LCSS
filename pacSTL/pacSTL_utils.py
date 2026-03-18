@@ -2,15 +2,13 @@ import copy
 
 import numpy as np
 
-class EllipsoidalSignalTemporalLogic:
+class PACSignalTemporalLogic:
     """
-    This class implements Ellipsoidal Signal Temporal Logic (eSTL) which extends I-STL to incorporate bounded uncertainty in signal values
-    and predicate functions using ellipsoids. eSTL syntax is the same as I-STL, but the calulcation of intervals is done using
-    ellipsoidal reachable sets. Here, we define the quantitative sementics of eSTL.
+    This class implements PAC Signal Temporal Logic (pacSTL) which extends I-STL with characteristic time points.
 
     Attributes:
-        phi_low : lower bound of the eSTL formula
-        phi_high : upper bound of the eSTL formula
+        phi_low : lower bound of the pacSTL formula
+        phi_high : upper bound of the pacSTL formula
     """
 
     def __init__(
@@ -27,7 +25,7 @@ class EllipsoidalSignalTemporalLogic:
 
     def negation(self):
         """
-        Negation of eSTL formula.
+        Negation of pacSTL formula.
         """
         self.low, self.high = -self.high, -self.low
         self.t_low, self.t_high = self.t_high, self.t_low
@@ -36,62 +34,62 @@ class EllipsoidalSignalTemporalLogic:
     @staticmethod
     def conjunction(formulas):
         """
-        Conjunction of eSTL formulas at a specific time.
+        Conjunction of pacSTL formulas at a specific time.
 
         Parameters:
-            list_formulas : dict of {time: eSTL formula}
+            list_formulas : dict of {time: pacSTL formula}
         """
         formula_low = min(formulas.values(), key=lambda f: f.low) # min(f.low for f in formulas.values())
         formula_high  = min(formulas.values(), key=lambda f: f.high) #min(f.high for f in formulas.values())
-        formula = EllipsoidalSignalTemporalLogic(formula_low.low, formula_high.high, formula_low.t_low, formula_high.t_high)
+        formula = PACSignalTemporalLogic(formula_low.low, formula_high.high, formula_low.t_low, formula_high.t_high)
         return formula
 
     @staticmethod
     def disjunction(formulas):
         """
-        disjunction of eSTL formulas at a specific time.
+        disjunction of pacSTL formulas at a specific time.
 
         Parameters:
-            list_formulas : dict of {time: eSTL formula}
+            list_formulas : dict of {time: pacSTL formula}
         """
         formula_low = max(formulas.values(), key=lambda f: f.low) # min(f.low for f in formulas.values())
         formula_high  = max(formulas.values(), key=lambda f: f.high) #min(f.high for f in formulas.values())
-        formula = EllipsoidalSignalTemporalLogic(formula_low.low, formula_high.high, formula_low.t_low, formula_high.t_high)
+        formula = PACSignalTemporalLogic(formula_low.low, formula_high.high, formula_low.t_low, formula_high.t_high)
         return formula
     
     @staticmethod
     def globally(formulas, time_horizon):
         """
-        Globally operator for eSTL.
+        Globally operator for pacSTL.
 
         Parameters:
-            formulas : dict of {time: eSTL formula}
+            formulas : dict of {time: pacSTL formula}
             time_horizon : iterable of time steps to consider
         """
         new_formulas = {t: formulas[t] for t in time_horizon if t in formulas}
-        global_formula = EllipsoidalSignalTemporalLogic.conjunction(new_formulas)
+        global_formula = PACSignalTemporalLogic.conjunction(new_formulas)
         return global_formula
 
     @staticmethod
     def eventually(formulas, time_horizon):
         """
-        eventually operator for eSTL.
+        eventually operator for pacSTL.
 
         Parameters:
-            formulas : dict of {time: eSTL formula}
+            formulas : dict of {time: pacSTL formula}
             time_horizon : iterable of time steps to consider
         """
         new_formulas = {t: formulas[t] for t in time_horizon if t in formulas}
-        global_formula = EllipsoidalSignalTemporalLogic.disjunction(new_formulas)
+        global_formula = PACSignalTemporalLogic.disjunction(new_formulas)
         return global_formula
 
     @staticmethod
     def eventually_globally(formulas, eventually_horizon=None, globally_horizon=None):
         """
-        Eventually-Globally (FG) operator for eSTL.
+        Eventually-Globally (FG) operator for pacSTL.
 
         Parameters:
-            formulas : dict of {time: eSTL formula} (the base signal)
+            formulas : dict of {time: pacSTL formula} (the base signal)
             eventually_horizon : iterable of offsets for the 'F' operator (None for unbounded)
             globally_horizon : iterable of offsets for the 'G' operator (None for unbounded)
         """
@@ -114,7 +112,7 @@ class EllipsoidalSignalTemporalLogic:
             valid_g_times = [st for st in target_g_times if st in formulas]
 
             if valid_g_times:
-                intermediate_results[t] = EllipsoidalSignalTemporalLogic.globally(
+                intermediate_results[t] = PACSignalTemporalLogic.globally(
                     formulas, valid_g_times
                 )
 
@@ -128,7 +126,7 @@ class EllipsoidalSignalTemporalLogic:
         # Ensure we only ask the 'eventually' function to evaluate times we successfully computed
         valid_f_times = [st for st in target_f_times if st in intermediate_results]
 
-        final_formula = EllipsoidalSignalTemporalLogic.eventually(
+        final_formula = PACSignalTemporalLogic.eventually(
             intermediate_results, valid_f_times
         )
 
@@ -153,7 +151,7 @@ class SignalTemporalLogic:
 
     def negation(self):
         """
-        Negation of eSTL formula.
+        Negation of STL formula.
         """
         self.phi = copy.deepcopy(-self.phi)
         return self
@@ -161,10 +159,10 @@ class SignalTemporalLogic:
     @staticmethod
     def conjunction(formulas):
         """
-        Conjunction of eSTL formulas at a specific time.
+        Conjunction of STL formulas at a specific time.
 
         Parameters:
-            list_formulas : dict of {time: eSTL formula}
+            list_formulas : dict of {time: STL formula}
         """
         formula_rho = min(formulas.values(), key=lambda f: f.phi)
         formula = SignalTemporalLogic(formula_rho.phi, formula_rho.t_phi)
@@ -173,10 +171,10 @@ class SignalTemporalLogic:
     @staticmethod
     def disjunction(formulas):
         """
-        Disjunction of eSTL formulas at a specific time.
+        Disjunction of STL formulas at a specific time.
 
         Parameters:
-            list_formulas : dict of {time: eSTL formula}
+            list_formulas : dict of {time: STL formula}
         """
         formula_rho = max(formulas.values(), key=lambda f: f.phi)
         formula = SignalTemporalLogic(formula_rho.phi, formula_rho.t_phi)
@@ -185,10 +183,10 @@ class SignalTemporalLogic:
     @staticmethod
     def globally(formulas, time_horizon):
         """
-        Globally operator for eSTL.
+        Globally operator for STL.
 
         Parameters:
-            formulas : dict of {time: eSTL formula}
+            formulas : dict of {time: STL formula}
             time_horizon : iterable of time steps to consider
         """
         new_formulas = {t: formulas[t] for t in time_horizon if t in formulas}
@@ -199,10 +197,10 @@ class SignalTemporalLogic:
     @staticmethod
     def eventually(formulas, time_horizon):
         """
-        eventually operator for eSTL.
+        eventually operator for STL.
 
         Parameters:
-            formulas : dict of {time: eSTL formula}
+            formulas : dict of {time: STL formula}
             time_horizon : iterable of time steps to consider
         """
         new_formulas = {t: formulas[t] for t in time_horizon if t in formulas}
