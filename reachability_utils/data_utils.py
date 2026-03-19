@@ -26,7 +26,7 @@ def quaternion_to_euler(x, y, z, w):
 
 def body_to_world(body_vel_x, body_vel_y, yaw):
     """
-    Rotate body-frame velocities to world-frame using yaw angle (ψ).
+    Rotate body-frame velocities to world-frame using yaw angle.
     :param body_vel_x: forward velocity in body frame
     :param body_vel_y: lateral velocity in body frame
     :param yaw: yaw angle in radians
