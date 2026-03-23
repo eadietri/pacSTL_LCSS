@@ -21,7 +21,7 @@ def proj_to_2_plotting(x, y, A, b, p, centre):
         return ellipsoid_distance(
             np.concatenate((np.array([x, y]), v)), A, b, p)
 
-    # good initial guess = centre’s coordinates for those dims
+    # good initial guess = centre's coordinates for those dims
     return myminval(objective, centre)
 
 
