@@ -40,14 +40,14 @@ $$
 \mathbf{C}_{\mathrm{RB}}(\nu) = \begin{bmatrix} \mathbf{0} & -m S(\omega) \\ - m S(\mathbf{v}) & - S(\mathbf{I}\omega) \end{bmatrix}, \quad \mathbf{I}\omega = [I_x p, I_y q, I_z r],
 $$
 
-where $\mathbf{I}$ and the moments of inertia $I_x, I_y, I_z$ are defined in \cite{gezer2025digital}.
+where $\mathbf{I}$ and the moments of inertia $I_x, I_y, I_z$ are defined in [4].
 For added mass terms, this is partitioned into linear and rotational components,
 
 $$
 \mathbf{C}_{\mathrm{A}}(\nu) = \begin{bmatrix} \mathbf{0} & - S(\mathbf{M}_{\mathrm{A,lin}}\mathbf{v}) \\ - S(\mathbf{M}_{\mathrm{A,lin}}\mathbf{v}) & - S(\mathbf{M}_{\mathrm{A,rot}}\omega) \end{bmatrix}.
 $$
 
-Therefore, $\mathbf{C} = \mathbf{C}_{\mathrm{RB}}(\nu) + \mathbf{C}_{\mathrm{A}}(\nu)$.
+Therefore, $\mathbf{C} = \mathbf{C}\_{\mathrm{RB}}(\nu) + \mathbf{C}\_{\mathrm{A}}(\nu)$.
 Further, the added mass and effective mass is defined as
 
 $$
