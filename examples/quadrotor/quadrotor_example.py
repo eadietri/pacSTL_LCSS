@@ -173,3 +173,31 @@ if __name__ == '__main__':
             epsilon_h1 = binomial_tail(spec_1_violations, ndata)
             print("Epsilon spec 1:", epsilon_h1)
 
+
+    # Testing on new trajectories with set-based evaluation
+    for i in range(10):
+        spec_1, atomic_interval_dict, runtime = eval_with_sets(ellipsoids_Ab_dict)
+        h_low = spec_1.low
+        h_high = spec_1.high
+        print("Robustness spec 1 interval:", spec_1.low, spec_1.high)
+        print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
+
+        # Now test new trajectories
+        ndata = 1500
+        data = make_quadrotor_samples(ndata)
+
+        violations = 0
+        for sample in data:
+            states = {
+                time_step: sample[time_step]
+                for time_step in range(1, data.shape[1])
+            }
+            spec_trace, _ = evaluate_traces(states)
+            
+            print(spec_trace.phi)
+            if spec_trace.phi < h_low or spec_trace.phi > h_high:
+                violations += 1
+                print("Robustness spec 1 violation time step:", spec_trace.t_phi, spec_trace.t_phi)
+
+
+        print("Violations:", violations)
