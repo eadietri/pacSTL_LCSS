@@ -15,13 +15,13 @@ def calculate_epsilon_misses(data, A_star, b_star, num_samples):
             misses += 1
     return misses
 
-def calculate_epsilon_tube_ellipsoid(misses, num_samples):
+def calculate_epsilon_tube_ellipsoid(misses, num_samples, beta):
     # The optimal value of p
-    p_estimate = binomial_tail(misses, num_samples)
+    p_estimate = binomial_tail(misses, num_samples, beta)
     return p_estimate
 
 # Calculate misses for binomial tail inversion for ellipsoid:
-def calculate_epsilon_ellipsoid(data, A_star, b_star, num_samples):
+def calculate_epsilon_ellipsoid(data, A_star, b_star, num_samples, beta):
 
     misses = 0
     for i in range(len(data)):
@@ -30,14 +30,14 @@ def calculate_epsilon_ellipsoid(data, A_star, b_star, num_samples):
             misses += 1
 
     # The optimal value of p
-    p_estimate = binomial_tail(misses, num_samples)
+    p_estimate = binomial_tail(misses, num_samples, beta)
     return p_estimate
 
 # Binomial tail inversion to calculate accuracy level given a test datasest
-def binomial_tail(misses: int, num_samples: int) -> float:
+def binomial_tail(misses: int, num_samples: int, confidence: float) -> float:
     """
     Compute the largest p such that:
-        BinomialCDF(k=misses; n=num_samples, p) >= 1e-9
+        BinomialCDF(k=misses; n=num_samples, p) >= beta
     """
     k = misses
     n = num_samples
@@ -55,15 +55,15 @@ def binomial_tail(misses: int, num_samples: int) -> float:
                 binom_sum += binom.pmf(j, l, e)
         return binom_sum
     
-    lc = NonlinearConstraint((lambda p : binom_cdf(p, k, n) - 0.000000001), lb=0, ub=1)
+    lc = NonlinearConstraint((lambda p : binom_cdf(p, k, n) - confidence), lb=0, ub=1)
     result = minimize(objective, x0=k/n, constraints=lc, method='SLSQP')
 
     if not result.success:
         print("Optimization failed:", result.message, " re-running with different cdf function")
-        lc = NonlinearConstraint((lambda p : binom_cdf_if_fails(p, k, n) - 0.000000001), lb=0, ub=1)
+        lc = NonlinearConstraint((lambda p : binom_cdf_if_fails(p, k, n) - confidence), lb=0, ub=1)
         result = minimize(objective, x0=k/n, constraints=lc, method='SLSQP')
         if not result.success:
             print("Optimization failed again:", result.message, "use beta.ppf:")
-            return 1- beta.ppf(0.000000001, num_samples-misses, misses+1)
+            return 1- beta.ppf(confidence, num_samples-misses, misses+1)
 
     return result.x[0]

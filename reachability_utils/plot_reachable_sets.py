@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+from scipy.linalg import null_space
 
 def ellipsoid_distance(x, A, b, p=2):
     x = np.asarray(x, dtype=float).ravel()
@@ -101,3 +102,19 @@ def project_plot_ellipsoid_2d(Ab, n_low, n_up, n_pred):
     plt.ylabel("x2")
     plt.title("Projection of ellipsoids to first 2 dimensions")
     plt.grid(True)
+
+def plot_true_projection(Q, c, r, ax, diml = 0, dimh = 1, alpha=0.75, color='green', **kwargs):
+        P = Q / r
+        n = P.shape[0]
+        if n == 2:
+            plot_ellipse(P, c, r, ax, alpha, color, **kwargs)
+            return
+        ind = [k for k in range(n) if k not in [diml, dimh]]
+        Phat = P[ind, :]
+        N = null_space(Phat)
+        M = N[(diml, dimh), :]  # Since M is guaranteed 2x2,
+        Minv = (1 / (M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0])) * np.array(
+            [[M[1, 1], -M[0, 1]], [-M[1, 0], M[0, 0]]]
+        )
+        P = Minv.T @ N.T @ P @ N @ Minv
+        plot_ellipse(P, c[(diml, dimh),], r, ax, alpha, color, **kwargs)

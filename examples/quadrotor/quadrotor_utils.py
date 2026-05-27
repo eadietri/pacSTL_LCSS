@@ -5,6 +5,8 @@ from numpy.random import default_rng
 from pacSTL.pacSTL_utils import PACSignalTemporalLogic
 from pacSTL.atomic_robustness_bounds import Robustness, Predicate
 
+import matplotlib.pyplot as plt
+
 # Dynamics parameters from https://easychair.org/publications/paper/gjfh/open
 
 GRAVITY = 9.81
@@ -77,7 +79,7 @@ def sample_quadrotor():
     # plt.grid(True)
     # plt.legend()
     # plt.show()
-    # ---------------------
+    # # ---------------------
 
     return reach
 

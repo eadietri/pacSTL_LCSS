@@ -1,41 +1,44 @@
 import numpy as np
 import os
 import pickle
-from reachability_utils.binomial import calculate_epsilon_ellipsoid, calculate_epsilon_misses, calculate_epsilon_tube_ellipsoid
+from reachability_utils.binomial import calculate_epsilon_ellipsoid, calculate_epsilon_misses, calculate_epsilon_tube_ellipsoid, in_ellipsoid
 from examples.vessel_navigation.vessel_utils import make_vessel_samples
 from examples.quadrotor.quadrotor_utils import make_quadrotor_samples
 
 import matplotlib.pyplot as plt
 
+from reachability_utils.plot_reachable_sets import project_ellipsoid_to_2d, plot_true_projection
+
+
 # Vessel:
-# epsilon for vessel reachable tube:  0.1069038165032687
-# epsilon for vessel ellipsoid t=1:  0.045339298531341304
-# epsilon for vessel ellipsoid t=2:  0.044308993920390914
-# epsilon for vessel ellipsoid t=3:  0.045339298531341304
-# epsilon for vessel ellipsoid t=4:  0.050388731511159586
-# epsilon for vessel ellipsoid t=5:  0.034621301651395646
+# epsilon for vessel reachable tube:   0.03348499011402828
+# epsilon for vessel ellipsoid t=1:  0.04222462617908631
+# epsilon for vessel ellipsoid t=2:  0.03574303119193998
+# epsilon for vessel ellipsoid t=3:  0.04636223826996945
+# epsilon for vessel ellipsoid t=4:  0.043270974114045256
+# epsilon for vessel ellipsoid t=5:  0.028681620561103117
 
 # Quadrotor:
-# epsilon for quadrotor reachable tube:  0.47261742379593386
-# epsilon for quadrotor ellipsoid t=0.25:  0.06940041729725141
-# epsilon for quadrotor ellipsoid t=0.5:  0.060087856017458335
-# epsilon for quadrotor ellipsoid t=0.75:  0.06385222153278249
-# epsilon for quadrotor ellipsoid t=1:  0.07122729940609279
-# epsilon for quadrotor ellipsoid t=1.25:  0.045339298531341304
-# epsilon for quadrotor ellipsoid t=1.5:  0.06103430682071637
-# epsilon for quadrotor ellipsoid t=1.75:  0.0543242523902271
-# epsilon for quadrotor ellipsoid t=2:  0.05818334449836276
-# epsilon for quadrotor ellipsoid t=2.25:  0.060087856017458335
-# epsilon for quadrotor ellipsoid t=2.5:  0.05818334449836276
-# epsilon for quadrotor ellipsoid t=2.75:  0.0684835505946733
-# epsilon for quadrotor ellipsoid t=3:  0.056262233172135113
-# epsilon for quadrotor ellipsoid t=3.25:  0.06756335372954136
-# epsilon for quadrotor ellipsoid t=3.5:  0.05334803306883369
-# epsilon for quadrotor ellipsoid t=3.75:  0.0543242523902271
-# epsilon for quadrotor ellipsoid t=4:  0.06940041729725141
-# epsilon for quadrotor ellipsoid t=4.25:  0.07304294091556593
-# epsilon for quadrotor ellipsoid t=4.5:  0.07394733179009132
-# epsilon for quadrotor ellipsoid t=4.75:  0.06291630268217446
+# epsilon for quadrotor reachable tube:  0.091586608464835
+# epsilon for quadrotor ellipsoid t=0.25:  0.0684835505946733
+# epsilon for quadrotor ellipsoid t=0.5:  0.06291630268217446
+# epsilon for quadrotor ellipsoid t=0.75:  0.05913752069051515
+# epsilon for quadrotor ellipsoid t=1:   0.06103430682071637
+# epsilon for quadrotor ellipsoid t=1.25:  0.06478474896412818
+# epsilon for quadrotor ellipsoid t=1.5:  0.05334803306883369
+# epsilon for quadrotor ellipsoid t=1.75:  0.05722511918150641
+# epsilon for quadrotor ellipsoid t=2:  0.06197712657848193
+# epsilon for quadrotor ellipsoid t=2.25:  0.05818334449836276
+# epsilon for quadrotor ellipsoid t=2.5:  0.07484890185166805
+# epsilon for quadrotor ellipsoid t=2.75:  0.06291630268217446
+# epsilon for quadrotor ellipsoid t=3:  0.060087856017458335
+# epsilon for quadrotor ellipsoid t=3.25:  0.07031538424551825
+# epsilon for quadrotor ellipsoid t=3.5:  0.060087856017458335
+# epsilon for quadrotor ellipsoid t=3.75:  0.05722511918150641
+# epsilon for quadrotor ellipsoid t=4:  0.06663973335457188
+# epsilon for quadrotor ellipsoid t=4.25:  0.07213649461301556
+# epsilon for quadrotor ellipsoid t=4.5:  0.0846229350077133
+# epsilon for quadrotor ellipsoid t=4.75:  0.07664545017924707
     
 
 def get_reachable_sets(file):
@@ -44,7 +47,7 @@ def get_reachable_sets(file):
 
     return data
 
-def vessel_traj_misses(data, sets, ax, ndata):
+def vessel_traj_misses(data, sets, ax, ndata, beta):
     misses = 0
     all_steps = []
 
@@ -56,13 +59,23 @@ def vessel_traj_misses(data, sets, ax, ndata):
         all_steps.append(np.array(step))
         step = []
     
+    # Track which trajectories have missed at any time step
+    missed_trajectories = set()
     for t in range(0, data.shape[1]-1):
-        misses += calculate_epsilon_misses(all_steps[t], sets[t+1][0], sets[t+1][1], ndata)
-
-    opt = calculate_epsilon_tube_ellipsoid(misses, ndata)
+        for i in range(ndata):
+            if i not in missed_trajectories:
+                for j in range(data.shape[2]):
+                    point = data[i, t+1, j, :]
+                    if in_ellipsoid(sets[t+1][0], sets[t+1][1], point) - 1 > 0:
+                        missed_trajectories.add(i)
+                        break # one corner outside is enough
+    
+    misses = len(missed_trajectories)
+    print("total misses: ", misses)
+    opt = calculate_epsilon_tube_ellipsoid(misses, ndata, beta=beta)
     return opt
 
-def quadrotor_traj_misses(data, sets, ax, ndata):
+def quadrotor_traj_misses(data, sets, ax, ndata, beta):
     misses = 0
     all_steps = []
 
@@ -72,14 +85,26 @@ def quadrotor_traj_misses(data, sets, ax, ndata):
             step.append(data[i, time_step])
         all_steps.append(np.array(step))
         step = []
-    
-    # for t in range(1, data.shape[1]):
-        misses += calculate_epsilon_misses(all_steps[time_step-1], sets[time_step][0], sets[time_step][1], ndata)
-    
-    print("total misses: ", misses)
-    opt = calculate_epsilon_tube_ellipsoid(misses, ndata)
 
+    # Track which trajectories have missed at any time step
+    # fig, ax = plt.subplots()
+    missed_trajectories = set()
+    for t in range(0, data.shape[1]-1):
+        for i in range(ndata):
+            # Q_proj, c_proj, r_proj = project_ellipsoid_to_2d(sets[t+1][0], sets[t+1][1], 0, 1)
+            # plot_true_projection(Q_proj, c_proj, r_proj, ax, diml = 0, dimh = 1)
+            point = all_steps[t][i]
+            if i not in missed_trajectories:
+                if in_ellipsoid(sets[t+1][0], sets[t+1][1], point) - 1 > 0:
+                    # ax.plot(point[0], point[1], 'ro')
+                    missed_trajectories.add(i)
+    # plt.show()
+
+    misses = len(missed_trajectories)
+    print("total misses: ", misses)
+    opt = calculate_epsilon_tube_ellipsoid(misses, ndata, beta=beta)
     return opt
+
 
 def quadrotor_time_point_set(Aq, bq, t1, t2):
     ndata = 1500
@@ -89,34 +114,38 @@ def quadrotor_time_point_set(Aq, bq, t1, t2):
         for i in range(ndata):
             qstep.append(quadrotor_test[i, time_step])
 
-    qopt = calculate_epsilon_ellipsoid(qstep, Aq, bq, ndata)
+    qopt = calculate_epsilon_ellipsoid(qstep, Aq, bq, ndata, beta=1e-9)
     return qopt
 
 def vessel_time_point_set(A, b, t1, t2):
     ndata = 1500
     test_set = make_vessel_samples(ndata)
-    step = []
+
+    misses = 0
     for time_step in range(t1, t2):
         for i in range(ndata):
-            for j in range(test_set.shape[2]):
-                step.append(test_set[i, time_step, j])
-    opt1 = calculate_epsilon_ellipsoid(step, A, b, ndata)
+            for j in range(test_set.shape[2]): # check all corners
+                point = test_set[i, time_step, j]
+                if in_ellipsoid(A, b, point) - 1 > 0:
+                    misses += 1
+                    break  # one corner outside = this sample misses
+    opt1 = calculate_epsilon_tube_ellipsoid(misses, ndata, beta=1e-9)
     return opt1
 
 if __name__ == '__main__':
     fig, ax = plt.subplots()
+    script_path = os.path.abspath(__file__)
+    script_directory = os.path.dirname(script_path)
 
     ### Evaluate Vessel reachable tube + sets:
 
-    script_path = os.path.abspath(__file__)
-    script_directory = os.path.dirname(script_path)
-    file = os.path.join(script_directory, 'reachable_sets_vessel.pkl')
+    file = os.path.join(script_directory, 'vessel_navigation/reachable_sets_vessel.pkl')
 
     vessel_sets = get_reachable_sets(file)
 
     ndata = 1500
     data_test_tube = make_vessel_samples(ndata)
-    opt_vessel = vessel_traj_misses(data_test_tube, vessel_sets, ax, ndata)
+    opt_vessel = vessel_traj_misses(data_test_tube, vessel_sets, ax, ndata, beta=1e-9)
     print("epsilon for vessel reachable tube: ", opt_vessel) 
 
     # reach set t=1
@@ -158,13 +187,13 @@ if __name__ == '__main__':
 
 ### Evaluate Quadrotor reachable tube + sets:
 
-    file2 = os.path.join(script_directory, 'reachable_sets_quadrotor.pkl')
+    file2 = os.path.join(script_directory, 'quadrotor/reachable_sets_quadrotor.pkl')
 
     quadrotor_sets = get_reachable_sets(file2)
 
     ndata = 1500
     quadrotor_test_tube = make_quadrotor_samples(ndata)
-    opt_quad = quadrotor_traj_misses(quadrotor_test_tube, quadrotor_sets, ax, ndata)
+    opt_quad = quadrotor_traj_misses(quadrotor_test_tube, quadrotor_sets, ax, ndata, beta=1e-9)
     print("epsilon for quadrotor reachable tube: ", opt_quad) 
 
     # reach set t=0.25

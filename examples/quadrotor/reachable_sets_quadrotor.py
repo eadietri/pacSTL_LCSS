@@ -4,6 +4,9 @@ import pickle
 from quadrotor_utils import make_quadrotor_samples
 from reachability_utils.ellipsoids import p_ball
 
+import matplotlib.pyplot as plt
+from reachability_utils.plot_reachable_sets import project_ellipsoid_to_2d
+from reachability_utils.plot_reachable_sets import plot_ellipse
 
 reachable_set_data = {}
 
@@ -34,16 +37,16 @@ def generate_reachable_sets(file):
         pickle.dump(reachable_set_data, f)
 
     # --- Plotting Code ---
-    # fig, ax = plt.subplots()
-    # i = 0
-    # for step in reachable_set_data.values():
-    #     A, b, xc = step
-    #     Q_proj, c_proj, r_proj = project_ellipsoid_to_2d(A, b, 0, 1)
-    #     ax = plot_ellipse(Q_proj, c_proj, r_proj, label=f"Ellipsoid {i}", ax=ax)
-    #     i+=1
-    # plt.xlabel("x")
-    # plt.ylabel("y")
-    # plt.show()
+    fig, ax = plt.subplots()
+    i = 0
+    for step in reachable_set_data.values():
+        A, b, xc = step
+        Q_proj, c_proj, r_proj = project_ellipsoid_to_2d(A, b, 0, 1)
+        ax = plot_ellipse(Q_proj, c_proj, r_proj, label=f"Ellipsoid {i}", ax=ax)
+        i+=1
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.show()
     # ---------------------
     
 

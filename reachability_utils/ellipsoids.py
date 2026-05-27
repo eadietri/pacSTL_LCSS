@@ -50,8 +50,6 @@ def in_ellipsoid(A, b, p):
     b = np.asarray(b,  dtype=float).ravel()  
     return np.linalg.norm(A @ p - b)
 
-
-
 def ellipsoid_volume(A: np.ndarray, b: np.ndarray) -> float:
     Q = A.T @ A
     Q_inv = inv(Q)

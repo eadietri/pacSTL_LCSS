@@ -170,7 +170,7 @@ if __name__ == '__main__':
 
             print("Number of spec 1 violations:", spec_1_violations)
 
-            epsilon_h1 = binomial_tail(spec_1_violations, ndata)
+            epsilon_h1 = binomial_tail(spec_1_violations, ndata, beta=0.000001)
             print("Epsilon spec 1:", epsilon_h1)
 
 
@@ -194,7 +194,6 @@ if __name__ == '__main__':
             }
             spec_trace, _ = evaluate_traces(states)
             
-            print(spec_trace.phi)
             if spec_trace.phi < h_low or spec_trace.phi > h_high:
                 violations += 1
                 print("Robustness spec 1 violation time step:", spec_trace.t_phi, spec_trace.t_phi)
