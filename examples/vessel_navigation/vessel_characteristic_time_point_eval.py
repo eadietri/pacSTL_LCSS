@@ -5,62 +5,6 @@ from examples.vessel_navigation.vessel_navigation_example import get_ISTL_persis
 from examples.vessel_navigation.vessel_navigation_example import DrillshipSimulator, step_sim, PRED_HORIZON
 from pacSTL.pacSTL_utils import PACSignalTemporalLogic, SignalTemporalLogic
 
-initial_conditions_t1 = [{
-    "ego": {
-        "p_x": 6.910547989184441,
-        "p_y": -1.0488382413520119,
-        "v_x": -0.18,
-        "v_y": 0.052,
-        "psi": -2.6418476630547154
-        },
- 'other': {'p_x': -3.819908418643457,
-           'p_y': 1.531185705012165,
-           'psi': 5.855914913448703,
-           'u': 0.09,
-           'v_x': 0.3412805249022282,
-           'v_y': 0.06489887712298083
-        },
-    "initial_other": {
-            "p_x": -3.819908418643457,
-            "p_y": 1.531185705012165,
-            "psi": 5.855914913448703,
-        },
-    "step": 1
-},
-{   'ego': {'p_x': (6.830664258419108),
-         'p_y': (-1.09777278496909),
-         'psi': (-2.5919802212967187),
-         'v_x': -0.18,
-         'v_y': 0.052},
-    'other': {'p_x': (-3.651454957476193),
-           'p_y': (1.565807194425048),
-           'psi': (5.895161026853126),
-           'u': 0.09,
-           'v_x': (0.31971801599466),
-           'v_y': (0.070546199502885)},
-    'initial_other': {'p_x': (-3.651454957476193),
-                      'p_y': (1.565807194425048),
-                      'psi': (5.895161026853126)},
-    "step": 2
-},
-{   'ego': {'p_x':(6.750780527653775),
-         'p_y': (-1.146707328586168),
-         'psi': (-2.5919802212967187),
-         'v_x': -0.18,
-         'v_y': 0.052},
-    'other': {'p_x': (-3.4933867940404038),
-           'p_y': (1.6028428521492801),
-           'psi': (5.930585444523092),
-           'u': 0.09,
-           'v_x': (0.3004837174165825),
-           'v_y': (0.07446927367705941)},
-    'initial_other': {'p_x': (-3.4933867940404038),
-                      'p_y': (1.6028428521492801),
-                      'psi': (5.930585444523092)},
-    "step": 3
-}
-]
-
 def evaluate_from_initial_conditions(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, robustness_fun_dict):
 
     with open(pkl_path, 'rb') as f:
@@ -239,9 +183,35 @@ if __name__ == "__main__":
     pkl_path = "examples/vessel_navigation/vessel_multi_runs.pkl"
 
     ellipsoids_Ab_dict, robustness_fun_dict = pre_script()
+    with open(pkl_path, 'rb') as f:
+        saved_runs = pickle.load(f)
+    saved_log = saved_runs[0]['log']
 
-    study_results = run_violation_study(
-        initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, robustness_fun_dict, n_runs=1500)
+    # build ICs from logged steps directly
+    def make_ic(step):
+        entry = saved_log[step]
+        return {
+            "ego": dict(entry['ego']),
+            "other": dict(entry['other']),
+            "initial_other": {
+                "p_x": entry['other']['p_x'],
+                "p_y": entry['other']['p_y'],
+                "psi": entry['other']['psi'],
+            },
+            "step": step
+        }
+
+    initial_conditions_t1 = [make_ic(s) for s in [1, 2, 3]]
+    initial_conditions_t2 = [make_ic(s) for s in [25, 26, 27]]
+    initial_conditions_t5 = [make_ic(s) for s in [35, 85, 105]]
+
+    for label, ics in [("t1", initial_conditions_t1), 
+                       ("t2", initial_conditions_t2), 
+                       ("t5", initial_conditions_t5)]:
+        print(f"\n{'='*50}")
+        print(f"VIOLATION STUDY — {label}")
+        print(f"{'='*50}")
+        run_violation_study(ics, pkl_path, ellipsoids_Ab_dict, robustness_fun_dict, n_runs=1500)
 
     # results = evaluate_from_initial_conditions(
     #     initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, robustness_fun_dict)
