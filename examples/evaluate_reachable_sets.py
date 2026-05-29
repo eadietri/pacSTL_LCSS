@@ -11,11 +11,11 @@ from reachability_utils.plot_reachable_sets import project_ellipsoid_to_2d, plot
 
 
 # Vessel:
-# epsilon for vessel reachable tube:   0.03348499011402828
-# epsilon for vessel ellipsoid t=1:  0.04222462617908631
-# epsilon for vessel ellipsoid t=2:  0.03574303119193998
-# epsilon for vessel ellipsoid t=3:  0.04636223826996945
-# epsilon for vessel ellipsoid t=4:  0.043270974114045256
+# epsilon for vessel reachable tube:   0.04117001578223758
+# epsilon for vessel ellipsoid t=1:  0.028761184701696925
+# epsilon for vessel ellipsoid t=2:  0.02625908485070735
+# epsilon for vessel ellipsoid t=3:  0.034621301651395646
+# epsilon for vessel ellipsoid t=4:  0.032332468945217165
 # epsilon for vessel ellipsoid t=5:  0.028681620561103117
 
 # Quadrotor:

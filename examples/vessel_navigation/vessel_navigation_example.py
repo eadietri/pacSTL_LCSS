@@ -1,16 +1,41 @@
+from typing import Counter
+
 import numpy as np
 import copy
 import time
 import os
 import enum
 
-from pacSTL.pacSTL_utils import PACSignalTemporalLogic
+from pacSTL.pacSTL_utils import PACSignalTemporalLogic, SignalTemporalLogic
 from reachability_utils.trigonometry_utils import rotation_matrix
 from examples.evaluate_reachable_sets import get_reachable_sets
 from vessel_utils import  T_H, R_EGO, R_EGO_DRILL, S_DOT_MAX_DRILL, InFrontRobustness, CollisionRobustness
 from vessel_utils import step_sim, DrillshipSimulator
 import pickle
 
+initial_conditions = [{
+    "ego": {
+        "p_x": 7.0,
+        "p_y": -1.0,
+        "v_x": -0.09 *2,
+        "v_y": 0.026*2,
+        "psi": 2.89
+    },
+    "other": {
+        "p_x": -4.0,
+        "p_y": 1.5,
+        "v_x": 0.33,
+        "v_y": 0.0,
+        "psi": 5.812238456841166,
+        "u": 0.09
+    },
+    "initial_other": {
+            "p_x": -4.0,
+            "p_y": 1.5,
+            "psi": 5.812238456841166,
+        }
+}
+]
 ros_dict = {
     "ego": {
         "p_x": 7.0,
@@ -40,7 +65,104 @@ MIN_TURNING_ANGLE = -0.8  # in rad
 TIME_TURNING = DT * 45  # in s
 TIME_PARALLEL = DT * 30  # in s
 
+def summarize_run(logs, run_idx):
+    """Print per-run summary of robustness values and characteristic timesteps."""
+    lows   = [logs[s]['robustness'][0] for s in sorted(logs)]
+    highs  = [logs[s]['robustness'][1] for s in sorted(logs)]
+    t_lows  = [logs[s]['robustness'][2] for s in sorted(logs)]
+    t_highs = [logs[s]['robustness'][3] for s in sorted(logs)]
 
+    print(f"\n--- Run {run_idx + 1} Summary ---")
+    print(f"  Steps logged: {len(logs)}")
+
+    print(f"\n  Robustness lower bound:")
+    print(f"    min={min(lows):.4f}, max={max(lows):.4f}, mean={np.mean(lows):.4f}, std={np.std(lows):.4f}")
+
+    print(f"\n  Robustness upper bound:")
+    print(f"    min={min(highs):.4f}, max={max(highs):.4f}, mean={np.mean(highs):.4f}, std={np.std(highs):.4f}")
+
+    print(f"\n  t_low  (pred horizon step of min low)  — counts: {dict(Counter(t_lows))}")
+    print(f"  t_high (pred horizon step of max high) — counts: {dict(Counter(t_highs))}")
+
+    # unique (t_low, t_high) pairs and how often they co-occurred
+    pairs = Counter(zip(t_lows, t_highs))
+    print(f"\n  (t_low, t_high) pair counts:")
+    for pair, count in sorted(pairs.items()):
+        print(f"    {pair}: {count} times")
+
+    return {
+        "lows": lows, "highs": highs,
+        "t_lows": t_lows, "t_highs": t_highs
+    }
+
+
+def run_multi(initial_conditions):
+    ellipsoids_Ab_dict, robustness_fun_dict = pre_script()
+    all_runs = {}
+
+    # aggregated across all runs
+    all_lows, all_highs = [], []
+    all_t_lows, all_t_highs = [], []
+
+    for run_idx, init in enumerate(initial_conditions):
+        print(f"\n=== Run {run_idx + 1} / {len(initial_conditions)} ===")
+
+        ros_dict_run = copy.deepcopy(init)
+        logs = main(ros_dict_run)
+
+        summary = summarize_run(logs, run_idx)
+
+        all_runs[run_idx] = {"init": init, "log": logs}
+
+        all_lows.extend(summary["lows"])
+        all_highs.extend(summary["highs"])
+        all_t_lows.extend(summary["t_lows"])
+        all_t_highs.extend(summary["t_highs"])
+
+    # --- Aggregate summary across all runs ---
+    print(f"\n{'='*50}")
+    print(f"AGGREGATE SUMMARY ({len(initial_conditions)} runs, {len(all_lows)} total steps)")
+    print(f"{'='*50}")
+
+    print(f"\n  Lower bound across all runs:")
+    print(f"    min={min(all_lows):.4f}, max={max(all_lows):.4f}, "
+          f"mean={np.mean(all_lows):.4f}, std={np.std(all_lows):.4f}")
+
+    print(f"\n  Upper bound across all runs:")
+    print(f"    min={min(all_highs):.4f}, max={max(all_highs):.4f}, "
+          f"mean={np.mean(all_highs):.4f}, std={np.std(all_highs):.4f}")
+
+    print(f"\n  t_low  counts across all runs: {dict(Counter(all_t_lows))}")
+    print(f"  t_high counts across all runs: {dict(Counter(all_t_highs))}")
+
+    all_pairs = Counter(zip(all_t_lows, all_t_highs))
+    print(f"\n  (t_low, t_high) pair counts across all runs:")
+    for pair, count in sorted(all_pairs.items()):
+        print(f"    {pair}: {count} times")
+
+    # --- Per characteristic timestep: list which (run, step) produced it ---
+    print(f"\n  Steps per t_low value:")
+    from collections import defaultdict
+    t_low_to_steps  = defaultdict(list)
+    t_high_to_steps = defaultdict(list)
+
+    for run_idx, run_data in all_runs.items():
+        for step_idx in sorted(run_data['log'].keys()):
+            t_l = run_data['log'][step_idx]['robustness'][2]
+            t_h = run_data['log'][step_idx]['robustness'][3]
+            t_low_to_steps[t_l].append((run_idx, step_idx))
+            t_high_to_steps[t_h].append((run_idx, step_idx))
+
+    for t_val in sorted(t_low_to_steps.keys()):
+        steps = t_low_to_steps[t_val]
+        print(f"    t_low={t_val}: {len(steps)} occurrences — (run, step): {steps}")
+
+    print(f"\n  Steps per t_high value:")
+    for t_val in sorted(t_high_to_steps.keys()):
+        steps = t_high_to_steps[t_val]
+        print(f"    t_high={t_val}: {len(steps)} occurrences — (run, step): {steps}")
+
+    return all_runs
 
 def transform_and_pred(state_ego, translation, rotation):
     pred_states_ego_in_other_frame = {}
@@ -88,28 +210,39 @@ def thread_atomic_pred(func, state_ego_array, ellipsoid_A, ellipsoid_b, center, 
     dict[key] = value
 
 
-def get_atomic_intervals(pred_states_ego_in_other_frame, ellipsoids_Ab_dict, robustness_fun_dict):
+def get_atomic_intervals(pred_states_ego_in_other_frame, robustness_fun_dict, ellipsoids_Ab_dict=None, drillship_position=None, pacstl=True):
     atomic_interval_dict = {}
 
     i = 1
     while i <= PRED_HORIZON:
-        atomic_interval_dict[i] = {}
-        atomic_interval_dict[i]['FrontLeft'] = robustness_fun_dict['FrontLeft'](pred_states_ego_in_other_frame[i],
-                                                                                ellipsoids_Ab_dict[i][0],
-                                                                                ellipsoids_Ab_dict[i][1],
-                                                                                ellipsoids_Ab_dict[i][2], i)
+        if pacstl == True:
+            atomic_interval_dict[i] = {}
+            atomic_interval_dict[i]['FrontLeft'] = robustness_fun_dict['FrontLeft'](pred_states_ego_in_other_frame[i],
+                                                                                    ellipsoids_Ab_dict[i][0],
+                                                                                    ellipsoids_Ab_dict[i][1],
+                                                                                    ellipsoids_Ab_dict[i][2], i)
 
-        atomic_interval_dict[i]['Coll'] = robustness_fun_dict['Coll'](
-            pred_states_ego_in_other_frame[i],
-            ellipsoids_Ab_dict[i][0],
-            ellipsoids_Ab_dict[i][1], ellipsoids_Ab_dict[i][2], i)
+            atomic_interval_dict[i]['Coll'] = robustness_fun_dict['Coll'](
+                pred_states_ego_in_other_frame[i],
+                ellipsoids_Ab_dict[i][0],
+                ellipsoids_Ab_dict[i][1], ellipsoids_Ab_dict[i][2], i)
 
-        i += 1
+            i += 1
+        else:
+            atomic_interval_dict[i] = {}
+            atomic_interval_dict[i]['FrontLeft'] = robustness_fun_dict['FrontLeft'].evaluate_for_states(pred_states_ego_in_other_frame[i],
+                                                                                    drillship_position[i], i)
+
+            atomic_interval_dict[i]['Coll'] = robustness_fun_dict['Coll'].evaluate_for_states(
+                pred_states_ego_in_other_frame[i],
+                drillship_position[i], i)
+
+            i += 1
 
     return atomic_interval_dict
 
 
-def get_ISTL_persistent_encounter(atomic_interval_dict):
+def get_ISTL_persistent_encounter(atomic_interval_dict, pacstl=True):
     predicates = {}
     predicates['headon'] = {}
     predicates['crossing'] = {}
@@ -117,13 +250,23 @@ def get_ISTL_persistent_encounter(atomic_interval_dict):
     # make predicates for temporal op
     timestep = 1
     while timestep <= PRED_HORIZON:
-        ai_at_t = atomic_interval_dict[timestep]
-        predicates['headon'][timestep] = PACSignalTemporalLogic.conjunction(
-            {0: ai_at_t['FrontLeft'], 1: ai_at_t['Coll']})
+        if pacstl== True:
+            ai_at_t = atomic_interval_dict[timestep]
+            predicates['headon'][timestep] = PACSignalTemporalLogic.conjunction(
+                {0: ai_at_t['FrontLeft'], 1: ai_at_t['Coll']})
 
-        timestep += 1
+            timestep += 1
+        else:
+            ai_at_t = atomic_interval_dict[timestep]
+            predicates['headon'][timestep] = SignalTemporalLogic.conjunction(
+                {0: ai_at_t['FrontLeft'], 1: ai_at_t['Coll']})
+
+            timestep += 1
     # temporal operation evaluation
-    headon_persistent_encounter = PACSignalTemporalLogic.globally(predicates['headon'], [1, 2, 3, 4, 5])
+    if pacstl== True:
+        headon_persistent_encounter = PACSignalTemporalLogic.globally(predicates['headon'], [1, 2, 3, 4, 5])
+    else:
+        headon_persistent_encounter = SignalTemporalLogic.globally(predicates['headon'], [1, 2, 3, 4, 5])
 
     return headon_persistent_encounter
 
@@ -159,8 +302,13 @@ def main(ros_dict):
         pred_states_ego_in_other_frame = transform_and_pred(state_ego=state_ego, translation=-np.array(
             [-state_other["p_x"], state_other["p_y"]]), rotation=state_other["psi"])
 
-        logging_dict[i] = {"step": i, "ego": copy.deepcopy(state_ego), "other": copy.deepcopy(state_other), "encounter": False}
-
+        logging_dict[i] = {
+            "step":       i,
+            "ego":        copy.deepcopy(state_ego),
+            "other":      copy.deepcopy(state_other),
+            "ego_pred":   copy.deepcopy(pred_states_ego_in_other_frame),  # dict, keys 0-5, each a 6-element numpy array
+            "encounter":  False
+        }
 
         # compute atomic predicate intervals
         start = time.perf_counter()
@@ -203,6 +351,13 @@ if __name__ == '__main__':
     script_directory = os.path.dirname(script_path)
 
     logs = main(ros_dict)
-    file = os.path.join(script_directory, 'vessel_example_traces.pkl')
+    file = os.path.join(script_directory, 'vessel_example_trace_init1.pkl')
     with open(file, 'wb') as f:
         pickle.dump(logs, f)
+
+    all_runs = run_multi(initial_conditions)
+
+    file = os.path.join(script_directory, 'vessel_multi_runs.pkl')
+    with open(file, 'wb') as f:
+        pickle.dump(all_runs, f)
+    print(f"\nSaved {len(all_runs)} runs to vessel_multi_runs.pkl")

@@ -383,6 +383,11 @@ class InFrontRobustness(Robustness):
 
     def __call__(self, state_ego_array, ellipsoid_A, ellipsoid_b,center, time_step):
         return self.compute_robustness(state_ego_array, ellipsoid_A, ellipsoid_b,center, time_step)
+    
+    def evaluate_for_states(self, state_ego_array, state_other_array, time_step):
+        pred_A, pred_b = self.pred.provide_halfspace(state_ego_array)
+        robustness = pred_A @ state_other_array - pred_b
+        return SignalTemporalLogic(robustness, time_step)
 
 class CollisionRobustness(Robustness):
     def __init__(
