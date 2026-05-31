@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
             runtimes = []
 
-            for i in range(10): #loop for runtime eval --- set to 1 otherwise
+            for i in range(1): #set to 10 for loop for runtime eval
 
                 # 2. Compute pacSTL and store also intermediate results
                 spec_1 , atomic_interval_dict, runtime = eval_with_sets(ellipsoids_Ab_dict)
@@ -183,20 +183,28 @@ if __name__ == '__main__':
     print("Robustness spec 1 critical time steps:", spec_1.t_low, spec_1.t_high)
 
     # Now test new trajectories
-    ndata = 1500
+    ndata = 15000
     data = make_quadrotor_samples(ndata)
 
     violations = 0
+    critical_times = 0
     for sample in data:
         states = {
             time_step: sample[time_step]
             for time_step in range(1, data.shape[1])
         }
         spec_trace, _ = evaluate_traces(states)
-        
+
         if spec_trace.phi < h_low or spec_trace.phi > h_high:
             violations += 1
             print("Robustness spec 1 violation time step:", spec_trace.t_phi, spec_trace.t_phi)
+        if spec_1.t_low ==  spec_trace.t_phi or spec_1.t_high == spec_trace.t_phi:
+            critical_times += 1
+        else:
+            print("Robustness spec 1 critical time steps DO NOT align")
+
+    print("Robustness spec 1 critical time steps align:",critical_times/ndata)
+
 
 
     print("Violations:", violations)

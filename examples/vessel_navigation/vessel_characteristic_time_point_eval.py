@@ -4,6 +4,7 @@ import numpy as np
 from examples.vessel_navigation.vessel_navigation_example import get_ISTL_persistent_encounter, get_atomic_intervals, pre_script
 from examples.vessel_navigation.vessel_navigation_example import DrillshipSimulator, step_sim, PRED_HORIZON
 from pacSTL.pacSTL_utils import PACSignalTemporalLogic, SignalTemporalLogic
+from examples.vessel_navigation.vessel_utils import make_vessel_samples
 
 def evaluate_from_initial_conditions(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, robustness_fun_dict):
 
@@ -100,66 +101,56 @@ def run_violation_study(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, rob
         "violations": 0,
         "violations_at_characteristic": 0,
         "violations_not_at_characteristic": 0,
+        "phi_at_characteristic": 0,
+        "phi_not_at_characteristic": 0,
     } for ic_idx in range(len(initial_conditions_t1))}
 
-    for run in range(n_runs):
-        if run % 100 == 0:
-            print(f"  Run {run}/{n_runs}...")
+    for ic_idx, init in enumerate(initial_conditions_t1):
+        source_step = init['step']
+        pred_states_ego_in_other_frame = saved_log[source_step]['ego_pred']
 
-        for ic_idx, init in enumerate(initial_conditions_t1):
-            source_step = init['step']
-            pred_states_ego_in_other_frame = saved_log[source_step]['ego_pred']
+        atomic_interval_dict = get_atomic_intervals(
+            pred_states_ego_in_other_frame, robustness_fun_dict, ellipsoids_Ab_dict)
+        robustness_head = get_ISTL_persistent_encounter(atomic_interval_dict)
+        t_low = robustness_head.t_low
+        t_high = robustness_head.t_high
 
-            simulator = DrillshipSimulator()
-            ros_dict_temp = copy.deepcopy(init)
-            tau_cmd = np.array(
-                [np.random.uniform(0.7, 1.2), np.random.uniform(-0.1, 0.1), 0, 0, 0, np.random.uniform(-0.1, 0.1)],
-                dtype=float).reshape(-1, 1)
 
-            # roll out other vessel
-            drillship_position = {}
-            for k in range(1, PRED_HORIZON + 1):
-                if k % 5 == 0:
-                    tau_cmd = np.array(
-                        [np.random.uniform(0.7, 1.2), np.random.uniform(-0.1, 0.1), 0, 0, 0, np.random.uniform(-0.1, 0.1)],
-                        dtype=float).reshape(-1, 1)
+        trajectory_samples = make_vessel_samples(n_runs)
 
-                done, _, ros_dict_temp = step_sim(
-                    [np.array([ros_dict_temp["other"]["p_x"], ros_dict_temp["other"]["p_y"]])],
-                    ros_dict_temp, simulator, tau_cmd)
 
-                drillship_position[k] = np.array([
-                    ros_dict_temp["other"]["p_x"],
-                    ros_dict_temp["other"]["p_y"],
-                    ros_dict_temp["other"]["psi"],
-                    ros_dict_temp["other"]["v_x"],
-                    ros_dict_temp["other"]["v_y"],
-                ])
+        for traj_sample in trajectory_samples:
 
-            # pacSTL interval
-            atomic_interval_dict = get_atomic_intervals(
-                pred_states_ego_in_other_frame, robustness_fun_dict, ellipsoids_Ab_dict)
-            robustness_head = get_ISTL_persistent_encounter(atomic_interval_dict)
+            drillship_traj_all_edges = {}
+            for j in range(4):
+                drillship_per_time = {} # edges of
+                for k in range(1, PRED_HORIZON + 1):
+                    drillship_per_time[k] = traj_sample[k][j]
+                drillship_traj_all_edges[j] = drillship_per_time
 
-            # point robustness
-            atomic_point_dict = get_atomic_intervals(
-                pred_states_ego_in_other_frame, robustness_fun_dict,
-                drillship_position=drillship_position, pacstl=False)
-            phi_head = get_ISTL_persistent_encounter(atomic_point_dict, pacstl=False)
+            for edge in range(4):
+                drillship_position = drillship_traj_all_edges[edge]
+                atomic_point_dict = get_atomic_intervals(
+                    pred_states_ego_in_other_frame, robustness_fun_dict,
+                    drillship_position=drillship_position, pacstl=False)
+                phi_head = get_ISTL_persistent_encounter(atomic_point_dict, pacstl=False)
 
-            # check
-            within = robustness_head.low <= phi_head.phi <= robustness_head.high
-            t_low  = robustness_head.t_low
-            t_high = robustness_head.t_high
-            violation_at_characteristic = (not within) and ((phi_head.t_phi == t_low) or (phi_head.t_phi == t_high))
+                # check
+                within = robustness_head.low <= phi_head.phi <= robustness_head.high
+                violation_at_characteristic = (not within) and ((phi_head.t_phi == t_low) or (phi_head.t_phi == t_high))
 
-            study_results[ic_idx]["total"] += 1
-            if not within:
-                study_results[ic_idx]["violations"] += 1
-                if violation_at_characteristic:
-                    study_results[ic_idx]["violations_at_characteristic"] += 1
+                study_results[ic_idx]["total"] += 1
+                if not within:
+                    study_results[ic_idx]["violations"] += 1
+                    if violation_at_characteristic:
+                        study_results[ic_idx]["violations_at_characteristic"] += 1
+                    else:
+                        study_results[ic_idx]["violations_not_at_characteristic"] += 1
                 else:
-                    study_results[ic_idx]["violations_not_at_characteristic"] += 1
+                    if ((phi_head.t_phi == t_low) or (phi_head.t_phi == t_high)):
+                        study_results[ic_idx]["phi_at_characteristic"] += 1
+                    else:
+                        study_results[ic_idx]["phi_not_at_characteristic"] += 1
 
     # summary
     print(f"\n{'='*50}")
@@ -170,11 +161,15 @@ def run_violation_study(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, rob
         viol  = counts["violations"]
         char  = counts["violations_at_characteristic"]
         not_char = counts["violations_not_at_characteristic"]
+        phi  = counts["phi_at_characteristic"]
+        not_phi = counts["phi_not_at_characteristic"]
         print(f"\n  IC {ic_idx + 1} (source_step={initial_conditions_t1[ic_idx]['step']}):")
         print(f"    Total runs:                      {total}")
         print(f"    Violations:                      {viol}/{total} ({100*viol/total:.1f}%)")
         print(f"    At characteristic timestep:      {char}/{viol if viol > 0 else 1} ({100*char/viol:.1f}%)" if viol > 0 else f"    At characteristic timestep:      0")
         print(f"    NOT at characteristic timestep:  {not_char}/{viol if viol > 0 else 1} ({100*not_char/viol:.1f}%)" if viol > 0 else f"    NOT at characteristic timestep:  0")
+        print(f"    Phi At characteristic timestep:      {phi}/{total if total > 0 else 1} ({100*phi/total:.1f}%)" if total > 0 else f"    STL Phi at characteristic timestep:      0")
+        print(f"    Phi not at characteristic timestep:  {not_phi}/{total if total > 0 else 1} ({100*not_phi/total:.1f}%)" if total > 0 else f"    STL Phi not at characteristic timestep:  0")
 
     return study_results
 
