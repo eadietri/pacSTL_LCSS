@@ -351,13 +351,14 @@ if __name__ == '__main__':
     script_directory = os.path.dirname(script_path)
 
     logs = main(ros_dict)
-    file = os.path.join(script_directory, 'vessel_example_trace_init1.pkl')
+    file = os.path.join(script_directory, 'vessel_example_trace_example.pkl')
     with open(file, 'wb') as f:
         pickle.dump(logs, f)
 
-    all_runs = run_multi(initial_conditions)
-
-    file = os.path.join(script_directory, 'vessel_multi_runs.pkl')
-    with open(file, 'wb') as f:
-        pickle.dump(all_runs, f)
-    print(f"\nSaved {len(all_runs)} runs to vessel_multi_runs.pkl")
+    # Note this is only relevant for characteristic time point study
+    # all_runs = run_multi(initial_conditions)
+    #
+    # file = os.path.join(script_directory, 'data/vessel_multi_runs.pkl')
+    # with open(file, 'wb') as f:
+    #     pickle.dump(all_runs, f)
+    # print(f"\nSaved {len(all_runs)} runs to vessel_multi_runs.pkl")

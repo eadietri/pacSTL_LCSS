@@ -5,6 +5,7 @@ from examples.vessel_navigation.vessel_navigation_example import get_ISTL_persis
 from examples.vessel_navigation.vessel_navigation_example import DrillshipSimulator, step_sim, PRED_HORIZON
 from pacSTL.pacSTL_utils import PACSignalTemporalLogic, SignalTemporalLogic
 from examples.vessel_navigation.vessel_utils import make_vessel_samples
+import time
 
 def evaluate_from_initial_conditions(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, robustness_fun_dict):
 
@@ -115,10 +116,12 @@ def run_violation_study(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, rob
         t_low = robustness_head.t_low
         t_high = robustness_head.t_high
 
-
+        start = time.perf_counter()
         trajectory_samples = make_vessel_samples(n_runs)
+        end = time.perf_counter()
+        print(f"Elapsed: {end - start:.6f} sec")
 
-
+        runtimes = []
         for traj_sample in trajectory_samples:
 
             drillship_traj_all_edges = {}
@@ -130,10 +133,13 @@ def run_violation_study(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, rob
 
             for edge in range(4):
                 drillship_position = drillship_traj_all_edges[edge]
+                start = time.perf_counter()
                 atomic_point_dict = get_atomic_intervals(
                     pred_states_ego_in_other_frame, robustness_fun_dict,
                     drillship_position=drillship_position, pacstl=False)
                 phi_head = get_ISTL_persistent_encounter(atomic_point_dict, pacstl=False)
+                end = time.perf_counter()
+                runtimes.append(end - start)
 
                 # check
                 within = robustness_head.low <= phi_head.phi <= robustness_head.high
@@ -153,6 +159,7 @@ def run_violation_study(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, rob
                         study_results[ic_idx]["phi_not_at_characteristic"] += 1
 
     # summary
+    print(np.mean(runtimes))
     print(f"\n{'='*50}")
     print(f"VIOLATION STUDY SUMMARY ({n_runs} runs)")
     print(f"{'='*50}")
@@ -175,7 +182,7 @@ def run_violation_study(initial_conditions_t1, pkl_path, ellipsoids_Ab_dict, rob
 
 
 if __name__ == "__main__":
-    pkl_path = "examples/vessel_navigation/vessel_multi_runs.pkl"
+    pkl_path = "/home/hanna/Data/Research/NTNU/pacSTL_LCSS/examples/vessel_navigation/data/vessel_multi_runs.pkl"
 
     ellipsoids_Ab_dict, robustness_fun_dict = pre_script()
     with open(pkl_path, 'rb') as f:
@@ -196,7 +203,7 @@ if __name__ == "__main__":
             "step": step
         }
 
-    initial_conditions_t1 = [make_ic(s) for s in [1, 2, 3]]
+    initial_conditions_t1 = [make_ic(s) for s in [1, 2, 3, 4]]
     initial_conditions_t2 = [make_ic(s) for s in [25, 26, 27]]
     initial_conditions_t5 = [make_ic(s) for s in [35, 85, 105]]
 

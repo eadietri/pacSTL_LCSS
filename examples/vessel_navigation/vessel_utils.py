@@ -218,7 +218,7 @@ D_DOT_MAX = 0.1 #yaw_dot_max
 S_DOT_MAX_DRILL = 0.4 #v_max 
 S_DDOT_MAX_DRILL = 0.15 #a_max 
 D_DOT_MAX_DRILL = 0.8 #yaw_dot_max 
-T_H = 20.0 #in s
+T_H = 15.0 #in s
 R_EGO = 1.0 #in m
 R_EGO_DRILL = 2.6 #in m
 
