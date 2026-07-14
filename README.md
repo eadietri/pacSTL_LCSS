@@ -1,6 +1,6 @@
 # pacSTL: PAC-Bounded Signal Temporal Logic from Data-Driven Reachability Analysis
 
-This repository accompanies the paper submitted to L-CSS: "pacSTL: PAC-Bounded Signal Temporal Logic from Data-Driven Reachability Analysis".
+This repository accompanies the paper submitted to L-CSS: "pacSTL: PAC-Bounded Signal Temporal Logic from Data-Driven Reachability Analysis". A Docker image of the project is also available at https://doi.org/10.24433/CO.8786164.v1.  
 
 # Parameters
 
